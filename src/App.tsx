@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import JSZip from 'jszip';
 import {
   AudioSettings,
   FolderConfig,
   QueueItem,
   RobloxSpeedPreset,
-  ROBLOX_SPEED_PRESETS,
 } from './types';
 import {
   decodeAudioFile,
@@ -20,20 +19,21 @@ import { FolderAndNamingSettings } from './components/FolderAndNamingSettings';
 import { QueueList } from './components/QueueList';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
 import { TimestampSplitModal, SlicedTrackResult } from './components/TimestampSplitModal';
-import { YouTubeVideoInfo } from './utils/youtubeService';
 import {
-  SlidersHorizontal,
   Headphones,
   CheckCircle2,
   AlertCircle,
   HelpCircle,
   Sparkles,
+  Zap,
+  Activity,
+  ShieldCheck,
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AudioSettings = {
   speedUp: 2.326,
   robloxPlaybackSpeed: 0.43,
-  outputFormat: 'ogg', // Default: OGG Vorbis (~90% lebih ringan, format resmi Roblox)
+  outputFormat: 'ogg', // Default: OGG Vorbis (~90% lebih ringan, lolos batas 20MB Roblox)
   pitchMode: 'resample',
   amplifyDb: 0,
   preserveQuality: true,
@@ -57,13 +57,12 @@ export default function App() {
     }
     return {
       folderName: 'Roblox_Audio_Output',
-      namingStyle: 'clean', // Default: clean, neat, not too long (e.g. Song_0.43.ogg)
+      namingStyle: 'clean', // Default: clean, e.g. Song_0.43.ogg
       includeEffectsInName: false,
       customPrefix: '',
     };
   });
-  const [selectedDirectoryHandle, setSelectedDirectoryHandle] = useState<any | null>(null);
-  const [selectedDirectoryName, setSelectedDirectoryName] = useState<string | null>(null);
+  const [selectedDirectoryHandle, setSelectedDirectoryHandle] = useState<FileSystemDirectoryHandle | null>(null);
 
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [isProcessingAll, setIsProcessingAll] = useState(false);
@@ -72,11 +71,7 @@ export default function App() {
 
   // Timestamp Splitting Modal State
   const [splitModalOpen, setSplitModalOpen] = useState(false);
-  const [splitOptions, setSplitOptions] = useState<{
-    youtubeInfo?: YouTubeVideoInfo | null;
-    youtubeUrl?: string;
-    localFile?: File | null;
-  }>({});
+  const [splitLocalFile, setSplitLocalFile] = useState<File | null>(null);
 
   // Audio Player State
   const [activePlayingId, setActivePlayingId] = useState<string | null>(null);
@@ -118,10 +113,12 @@ export default function App() {
           mode: 'readwrite',
         });
         setSelectedDirectoryHandle(handle);
-        setSelectedDirectoryName(handle.name);
         showNotification(`Folder komputer terhubung: ${handle.name}`, 'success');
       } else {
-        showNotification('Browser Anda tidak mendukung pemilihan folder langsung. File akan diunduh dengan struktur folder rapi.', 'info');
+        showNotification(
+          'Browser Anda tidak mendukung pemilihan folder langsung. File akan diunduh dengan struktur folder rapi.',
+          'info'
+        );
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
@@ -129,12 +126,6 @@ export default function App() {
         showNotification('Gagal mengakses folder atau izin dibatalkan', 'error');
       }
     }
-  };
-
-  const handleClearDirectory = () => {
-    setSelectedDirectoryHandle(null);
-    setSelectedDirectoryName(null);
-    showNotification('Pilihan folder komputer dilepas', 'info');
   };
 
   // Add files to queue
@@ -194,73 +185,9 @@ export default function App() {
     }
   };
 
-  // Add YouTube audio to queue
-  const handleYouTubeAudioLoaded = async (
-    blob: Blob,
-    title: string,
-    duration: number,
-    thumbnail?: string
-  ) => {
-    const id = `yt-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    const originalFileName = `${title.replace(/[^a-zA-Z0-9_\- ]/g, '_')}.mp3`;
-    const outputFileName = generateOutputName(originalFileName, settings, settings.outputFormat, folderConfig);
-
-    const newItem: QueueItem = {
-      id,
-      source: 'youtube',
-      title,
-      originalFileName,
-      fileSize: blob.size,
-      duration,
-      status: 'decoding',
-      progress: 0,
-      settings: { ...settings },
-      originalBlob: blob,
-      outputFileName,
-      thumbnail,
-      createdAt: Date.now(),
-    };
-
-    setQueue((prev) => [...prev, newItem]);
-    showNotification(`Audio YouTube "${title}" berhasil masuk antrean!`, 'success');
-
-    try {
-      const buffer = await decodeAudioFile(blob);
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === newItem.id
-            ? {
-                ...q,
-                originalBuffer: buffer,
-                duration: buffer.duration,
-                status: 'idle',
-              }
-            : q
-        )
-      );
-    } catch (err: unknown) {
-      console.error('Decode error for YouTube audio', err);
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === newItem.id
-            ? {
-                ...q,
-                status: 'error',
-                errorMessage: 'Gagal mendecode stream audio YouTube.',
-              }
-            : q
-        )
-      );
-    }
-  };
-
   // Open timestamp split modal
-  const handleOpenSplitModal = (options: {
-    youtubeInfo?: YouTubeVideoInfo | null;
-    youtubeUrl?: string;
-    localFile?: File | null;
-  }) => {
-    setSplitOptions(options);
+  const handleOpenSplitModal = (options: { localFile?: File | null }) => {
+    setSplitLocalFile(options.localFile || null);
     setSplitModalOpen(true);
   };
 
@@ -279,7 +206,7 @@ export default function App() {
 
       return {
         id,
-        source: res.thumbnail ? 'youtube' : 'upload',
+        source: 'split',
         title: res.title,
         originalFileName: res.originalFileName,
         fileSize: res.blob.size,
@@ -290,13 +217,12 @@ export default function App() {
         originalBlob: res.blob,
         originalBuffer: res.buffer,
         outputFileName,
-        thumbnail: res.thumbnail,
         createdAt: Date.now() + idx,
       };
     });
 
     setQueue((prev) => [...prev, ...newItems]);
-    showNotification(`Berhasil memecah & menambahkan ${results.length} lagu ke antrean!`, 'success');
+    showNotification(`Berhasil memotong & menambahkan ${results.length} lagu ke antrean!`, 'success');
   };
 
   // Process a single item
@@ -311,7 +237,7 @@ export default function App() {
       );
       try {
         buffer = await decodeAudioFile(item.originalBlob);
-      } catch (e: unknown) {
+      } catch {
         setQueue((prev) =>
           prev.map((q) =>
             q.id === id
@@ -342,7 +268,7 @@ export default function App() {
               ...q,
               status: 'processing',
               progress: 10,
-              outputFileName: generateOutputName(q.originalFileName, q.settings),
+              outputFileName: generateOutputName(q.originalFileName, q.settings, q.settings.outputFormat, folderConfig),
             }
           : q
       )
@@ -375,7 +301,7 @@ export default function App() {
                 processedSize: mainBlob.size,
                 processedUrl,
                 processedDuration: processedBuffer.duration,
-                outputFileName: generateOutputName(q.originalFileName, q.settings),
+                outputFileName: generateOutputName(q.originalFileName, q.settings, q.settings.outputFormat, folderConfig),
               }
             : q
         )
@@ -512,7 +438,10 @@ export default function App() {
         const writable = await fileHandle.createWritable();
         await writable.write(blobToDownload);
         await writable.close();
-        showNotification(`Tersimpan langsung ke folder "${selectedDirectoryName}/${subfolderName}/${fileName}"`, 'success');
+        showNotification(
+          `Tersimpan langsung ke folder "${selectedDirectoryHandle.name}/${subfolderName}/${fileName}"`,
+          'success'
+        );
         return;
       } catch (err) {
         console.warn('Direct disk save failed, using standard browser download', err);
@@ -540,7 +469,10 @@ export default function App() {
 
     setIsDownloadingZip(true);
     const folderName = (folderConfig.folderName || 'Roblox_Audio_Output').trim();
-    showNotification(`Mengompres ${readyItems.length} audio ke dalam folder "${folderName}" di ZIP...`, 'info');
+    showNotification(
+      `Mengompres ${readyItems.length} audio ke dalam folder "${folderName}" di ZIP...`,
+      'info'
+    );
 
     try {
       const zip = new JSZip();
@@ -573,12 +505,13 @@ Untuk mengembalikan suara ke kecepatan & nada normal di dalam game Roblox:
 
 Tabel Preset Roblox:
 - Speed-up: 2.326x -> Sound.PlaybackSpeed = 0.43
+- Speed-up: 2.0x   -> Sound.PlaybackSpeed = 0.50
+- Speed-up: 3.0x   -> Sound.PlaybackSpeed = 0.33
 - Speed-up: 4.0x   -> Sound.PlaybackSpeed = 0.25
-- Speed-up: 6.0x   -> Sound.PlaybackSpeed = 0.17
-- Speed-up: 8.57x  -> Sound.PlaybackSpeed = 0.12
+- Speed-up: 5.0x   -> Sound.PlaybackSpeed = 0.20
 Formula: PlaybackSpeed = 1 / Speed-Up
 
-Dibuat dengan Audio Manipulator Tool.
+Dibuat dengan Audio Manipulator Studio Tool.
 `;
       targetFolder!.file('PETUNJUK_ROBLOX.txt', readmeText);
 
@@ -591,7 +524,10 @@ Dibuat dengan Audio Manipulator Tool.
           const writable = await fileHandle.createWritable();
           await writable.write(content);
           await writable.close();
-          showNotification(`File ZIP langsung tersimpan di folder: ${selectedDirectoryName}/${zipFileName}`, 'success');
+          showNotification(
+            `File ZIP langsung tersimpan di folder: ${selectedDirectoryHandle.name}/${zipFileName}`,
+            'success'
+          );
           return;
         } catch (err) {
           console.warn('Direct zip save failed, falling back to browser download', err);
@@ -629,55 +565,75 @@ Dibuat dengan Audio Manipulator Tool.
   };
 
   const activePlayingItem = queue.find((q) => q.id === activePlayingId);
+  const readyCount = queue.filter((q) => q.status === 'ready').length;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-28">
+    <div className="min-h-screen bg-[#090a10] text-slate-100 flex flex-col font-sans pb-32">
       {/* Toast Notification */}
       {notification && (
         <div
           id="toast-notification"
-          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-xs font-semibold animate-in fade-in slide-in-from-top-3 border ${
+          className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold animate-in fade-in slide-in-from-top-3 border backdrop-blur-xl ${
             notification.type === 'success'
-              ? 'bg-emerald-950/90 text-emerald-200 border-emerald-800'
+              ? 'bg-emerald-950/90 text-emerald-200 border-emerald-500/40 shadow-emerald-950/40'
               : notification.type === 'error'
-              ? 'bg-rose-950/90 text-rose-200 border-rose-800'
-              : 'bg-slate-900/95 text-slate-200 border-slate-700'
+              ? 'bg-rose-950/90 text-rose-200 border-rose-500/40 shadow-rose-950/40'
+              : 'bg-zinc-900/95 text-zinc-200 border-zinc-700/60 shadow-black/40'
           }`}
         >
-          {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400" />}
-          {notification.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400" />}
-          {notification.type === 'info' && <Sparkles className="w-4 h-4 text-blue-400" />}
+          {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
+          {notification.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
+          {notification.type === 'info' && <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />}
           <span>{notification.message}</span>
         </div>
       )}
 
-      {/* App Header */}
-      <header className="border-b border-slate-850 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+      {/* Modern High-End Studio Header */}
+      <header className="border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          {/* Logo & Branding */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 to-rose-500 flex items-center justify-center text-white shadow-lg shadow-red-600/30">
-              <Headphones className="w-5 h-5" />
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 flex items-center justify-center text-white shadow-xl shadow-red-600/30 shrink-0 ring-1 ring-white/20">
+              <Headphones className="w-5 h-5 stroke-[2.2]" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-lg text-white tracking-tight">Audio Manipulator</h1>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-300 border border-red-500/30">
-                  Roblox Speed & FX Engine
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="font-extrabold text-base sm:text-lg text-white tracking-tight">
+                  Audio Manipulator
+                </h1>
+                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">
+                  Roblox Studio Edition
+                </span>
+                <span className="hidden md:inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                  Passes 20MB Cap
                 </span>
               </div>
-              <p className="text-xs text-slate-400">
-                Manipulasi Playback Speed, Amplify Gain, Reverb, dan Konversi YouTube ke MP3
+              <p className="text-xs text-zinc-400 mt-0.5 line-clamp-1">
+                PlaybackSpeed Resampling, Gain Amplifikasi, Reverb Studio, Timestamp Splitter & Batch OGG
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Quick Stats & Formula Toggle */}
+          <div className="flex items-center gap-2.5 self-end sm:self-auto shrink-0 flex-wrap">
+            {queue.length > 0 && (
+              <div className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-xs text-zinc-300 flex items-center gap-2">
+                <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                <span className="font-mono">
+                  {readyCount}/{queue.length} Siap
+                </span>
+              </div>
+            )}
+
             <button
+              type="button"
+              id="toggle-formula-guide-btn"
               onClick={() => setShowFormulaExplainer(!showFormulaExplainer)}
-              className="px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-750 text-slate-300 border border-slate-700 transition flex items-center gap-1.5"
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-zinc-900 hover:bg-zinc-800 text-zinc-200 border border-zinc-800 transition flex items-center gap-1.5 active:scale-95 shadow-sm"
             >
               <HelpCircle className="w-3.5 h-3.5 text-red-400" />
-              <span>{showFormulaExplainer ? 'Sembunyikan Formula' : 'Panduan Formula Roblox'}</span>
+              <span>{showFormulaExplainer ? 'Tutup Panduan' : 'Panduan Formula'}</span>
             </button>
           </div>
         </div>
@@ -695,7 +651,10 @@ Dibuat dengan Audio Manipulator Tool.
                 speedUp: preset.speedUp,
                 robloxPlaybackSpeed: preset.robloxPlaybackSpeed,
               }));
-              showNotification(`Preset ${preset.label} dipilih (Roblox PlaybackSpeed: ${preset.robloxPlaybackSpeed})`, 'info');
+              showNotification(
+                `Preset ${preset.label} dipilih (Roblox PlaybackSpeed: ${preset.robloxPlaybackSpeed})`,
+                'info'
+              );
             }}
             onCustomSpeedChange={(speedUp: number) => {
               const robloxVal = parseFloat((1 / Math.max(0.01, speedUp)).toFixed(4));
@@ -708,15 +667,14 @@ Dibuat dengan Audio Manipulator Tool.
           />
         )}
 
-        {/* Audio Input: Single / Multiple File Upload & YouTube to MP3 */}
+        {/* Audio Input: Single / Multiple Local File Upload & Timestamp Slicer */}
         <AudioInputSection
           onFilesSelected={handleFilesSelected}
-          onYouTubeAudioLoaded={handleYouTubeAudioLoaded}
           onOpenSplitModal={handleOpenSplitModal}
           queueCount={queue.length}
         />
 
-        {/* Global Controls: Playback Speed, Amplify, Reverb Filters */}
+        {/* Global Controls: Playback Speed, Amplify, Reverb Filters, Fades */}
         <GlobalControls
           settings={settings}
           onChangeSettings={setSettings}
@@ -728,20 +686,17 @@ Dibuat dengan Audio Manipulator Tool.
 
         {/* Output Folder & Clean File Naming Settings */}
         <FolderAndNamingSettings
-          folderConfig={folderConfig}
-          onChangeFolderConfig={handleUpdateFolderConfig}
-          outputFormat={settings.outputFormat}
-          selectedDirectoryHandle={selectedDirectoryHandle}
-          onSelectDirectory={handleSelectDirectory}
-          onClearDirectory={handleClearDirectory}
-          selectedDirectoryName={selectedDirectoryName}
+          config={folderConfig}
+          onChangeConfig={handleUpdateFolderConfig}
+          directFolderHandle={selectedDirectoryHandle}
+          onRequestSelectFolder={handleSelectDirectory}
         />
 
-        {/* Output & Queue List: Clear metadata, individual & bulk download, preview */}
+        {/* Queue List: Clear metadata, individual & bulk download, preview */}
         <QueueList
           queue={queue}
           folderName={folderConfig.folderName}
-          selectedDirectoryName={selectedDirectoryName}
+          selectedDirectoryName={selectedDirectoryHandle?.name || null}
           onProcessItem={processItemById}
           onDeleteItem={handleDeleteItem}
           onClearAll={handleClearAll}
@@ -769,13 +724,14 @@ Dibuat dengan Audio Manipulator Tool.
         />
       )}
 
-      {/* Timestamp Split Modal (Playlist / Mix / Compilation) */}
+      {/* Local Timestamp Split Modal */}
       <TimestampSplitModal
         isOpen={splitModalOpen}
-        onClose={() => setSplitModalOpen(false)}
-        youtubeInfo={splitOptions.youtubeInfo}
-        youtubeUrl={splitOptions.youtubeUrl}
-        localFile={splitOptions.localFile}
+        onClose={() => {
+          setSplitModalOpen(false);
+          setSplitLocalFile(null);
+        }}
+        localFile={splitLocalFile}
         onTracksSplitted={handleTracksSplitted}
       />
     </div>

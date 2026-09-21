@@ -11,44 +11,52 @@ export interface RobloxSpeedPreset {
 
 export const ROBLOX_SPEED_PRESETS: RobloxSpeedPreset[] = [
   {
+    id: 'speed-2.326',
+    label: '0.43 (2.326x)',
+    speedUp: 2.326,
+    robloxPlaybackSpeed: 0.43,
+    formula: 'PlaybackSpeed = 1 / 2.326 ≈ 0.43',
+    description: 'Preset paling populer! Hemat durasi ~57%, kualitas vokal tetap jernih di Roblox',
+  },
+  {
+    id: 'speed-2',
+    label: '0.50 (2.00x)',
+    speedUp: 2.0,
+    robloxPlaybackSpeed: 0.5,
+    formula: 'PlaybackSpeed = 1 / 2.0 = 0.50',
+    description: 'Setengah kecepatan di Roblox, durasi terpangkas tepat 50%',
+  },
+  {
+    id: 'speed-3',
+    label: '0.33 (3.00x)',
+    speedUp: 3.0,
+    robloxPlaybackSpeed: 0.33,
+    formula: 'PlaybackSpeed = 1 / 3.0 ≈ 0.33',
+    description: 'Percepatan 3x lipat, cocok untuk lagu berdurasi 5–7 menit',
+  },
+  {
+    id: 'speed-4',
+    label: '0.25 (4.00x)',
+    speedUp: 4.0,
+    robloxPlaybackSpeed: 0.25,
+    formula: 'PlaybackSpeed = 1 / 4.0 = 0.25',
+    description: 'Percepatan 4x lipat, sangat hemat ukuran file untuk audio panjang',
+  },
+  {
+    id: 'speed-5',
+    label: '0.20 (5.00x)',
+    speedUp: 5.0,
+    robloxPlaybackSpeed: 0.2,
+    formula: 'PlaybackSpeed = 1 / 5.0 = 0.20',
+    description: 'Percepatan 5x lipat, muat lagu hingga 15 menit dalam batas upload',
+  },
+  {
     id: 'normal',
-    label: 'Normal (1x)',
+    label: '1.00 (Normal)',
     speedUp: 1.0,
     robloxPlaybackSpeed: 1.0,
     formula: 'PlaybackSpeed = 1 / 1.0 = 1.0',
     description: 'Kecepatan asli standar (tanpa percepatan)',
-  },
-  {
-    id: 'speed-2.326',
-    label: '2.326x Speed-up',
-    speedUp: 2.326,
-    robloxPlaybackSpeed: 0.43,
-    formula: 'PlaybackSpeed = 1 / 2.326 ≈ 0.43',
-    description: 'Set Sound.PlaybackSpeed = 0.43 di Roblox untuk putar normal',
-  },
-  {
-    id: 'speed-4',
-    label: '4x Speed-up',
-    speedUp: 4.0,
-    robloxPlaybackSpeed: 0.25,
-    formula: 'PlaybackSpeed = 1 / 4.0 = 0.25',
-    description: 'Set Sound.PlaybackSpeed = 0.25 di Roblox untuk putar normal',
-  },
-  {
-    id: 'speed-6',
-    label: '6x Speed-up',
-    speedUp: 6.0,
-    robloxPlaybackSpeed: 0.17,
-    formula: 'PlaybackSpeed = 1 / 6.0 ≈ 0.17',
-    description: 'Set Sound.PlaybackSpeed = 0.17 di Roblox untuk putar normal',
-  },
-  {
-    id: 'speed-8.57',
-    label: '8.57x Speed-up',
-    speedUp: 8.57,
-    robloxPlaybackSpeed: 0.12,
-    formula: 'PlaybackSpeed = 1 / 8.57 ≈ 0.12',
-    description: 'Set Sound.PlaybackSpeed = 0.12 di Roblox untuk putar normal',
   },
 ];
 
@@ -85,7 +93,7 @@ export type QueueItemStatus = 'idle' | 'decoding' | 'processing' | 'ready' | 'er
 
 export interface QueueItem {
   id: string;
-  source: 'upload' | 'youtube';
+  source: 'upload' | 'split';
   title: string;
   originalFileName: string;
   fileSize: number;

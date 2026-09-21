@@ -1,30 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Scissors,
   X,
-  Play,
-  Check,
   Music,
-  ListMusic,
   FileText,
   AlertCircle,
-  Loader2,
-  Download,
   Sparkles,
   Layers,
   CheckSquare,
   Square,
-  Youtube,
-  Clock
+  Clock,
+  UploadCloud,
+  Check,
 } from 'lucide-react';
-import { YouTubeVideoInfo, downloadYouTubeAudio } from '../utils/youtubeService';
 import {
   ParsedTrack,
   parseTimestampsFromText,
   sliceAudioBuffer,
-  secondsToTimeString
+  secondsToTimeString,
 } from '../utils/timestampParser';
-import { decodeAudioFile, audioBufferToWav, formatDuration, getAudioContext } from '../utils/audioEngine';
+import {
+  decodeAudioFile,
+  audioBufferToWav,
+  formatDuration,
+  getAudioContext,
+} from '../utils/audioEngine';
 
 export interface SlicedTrackResult {
   title: string;
@@ -32,16 +32,11 @@ export interface SlicedTrackResult {
   buffer: AudioBuffer;
   duration: number;
   originalFileName: string;
-  thumbnail?: string;
 }
 
 interface TimestampSplitModalProps {
   isOpen: boolean;
   onClose: () => void;
-  // If invoked from YouTube
-  youtubeInfo?: YouTubeVideoInfo | null;
-  youtubeUrl?: string;
-  // If invoked from local file
   localFile?: File | null;
   onTracksSplitted: (results: SlicedTrackResult[]) => void;
 }
@@ -49,74 +44,91 @@ interface TimestampSplitModalProps {
 export const TimestampSplitModal: React.FC<TimestampSplitModalProps> = ({
   isOpen,
   onClose,
-  youtubeInfo,
-  youtubeUrl,
-  localFile,
+  localFile: initialLocalFile,
   onTracksSplitted,
 }) => {
-  const [activeTab, setActiveTab] = useState<'list' | 'text'>('list');
+  const [selectedFile, setSelectedFile] = useState<File | null>(initialLocalFile || null);
+  const [activeTab, setActiveTab] = useState<'text' | 'list'>('text');
   const [rawText, setRawText] = useState('');
   const [tracks, setTracks] = useState<ParsedTrack[]>([]);
   const [totalMediaDuration, setTotalMediaDuration] = useState<number>(0);
+  const [isDecodingAudio, setIsDecodingAudio] = useState(false);
+  const [isSlicing, setIsSlicing] = useState(false);
+  const [sliceProgress, setSliceProgress] = useState({ current: 0, total: 0, name: '' });
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Processing state
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [progressStage, setProgressStage] = useState<string>('');
-  const [progressPercent, setProgressPercent] = useState<number>(0);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const decodedBufferRef = useRef<AudioBuffer | null>(null);
 
-  // Initialize timestamps from YouTube info or chapters
   useEffect(() => {
-    if (!isOpen) {
-      setIsProcessing(false);
-      setErrorMsg(null);
+    if (initialLocalFile) {
+      setSelectedFile(initialLocalFile);
+    }
+  }, [initialLocalFile]);
+
+  // Decode audio file when selectedFile changes
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (!selectedFile) {
+      decodedBufferRef.current = null;
+      setTotalMediaDuration(0);
       return;
     }
 
-    let initialDuration = 0;
-    let initialText = '';
-
-    if (youtubeInfo) {
-      initialDuration = youtubeInfo.duration || 0;
-      setTotalMediaDuration(initialDuration);
-
-      // Check if chapters exist
-      if (youtubeInfo.chapters && youtubeInfo.chapters.length > 0) {
-        initialText = youtubeInfo.chapters
-          .map((ch) => `${secondsToTimeString(ch.start_time)} ${ch.title}`)
-          .join('\n');
-      } else if (youtubeInfo.description) {
-        initialText = youtubeInfo.description;
+    const decodeFile = async () => {
+      setIsDecodingAudio(true);
+      setErrorMessage(null);
+      try {
+        const buffer = await decodeAudioFile(selectedFile);
+        if (!isCancelled) {
+          decodedBufferRef.current = buffer;
+          setTotalMediaDuration(buffer.duration);
+        }
+      } catch (err: any) {
+        if (!isCancelled) {
+          console.error('Gagal membaca file audio:', err);
+          setErrorMessage('Gagal mendecode file audio: ' + (err.message || 'Format tidak didukung'));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsDecodingAudio(false);
+        }
       }
-    } else if (localFile) {
-      // For local files, we can estimate duration once decoded or default to 0
-      initialDuration = 0;
-      setTotalMediaDuration(0);
-    }
+    };
 
-    setRawText(initialText);
-    const parsed = parseTimestampsFromText(initialText, initialDuration);
-    setTracks(parsed);
-    if (parsed.length === 0 && initialText.trim()) {
-      setActiveTab('text');
-    } else {
-      setActiveTab('list');
-    }
-  }, [isOpen, youtubeInfo, localFile]);
+    decodeFile();
 
-  // Handle re-parsing when text changes
-  const handleApplyText = () => {
-    const parsed = parseTimestampsFromText(rawText, totalMediaDuration);
-    setTracks(parsed);
-    if (parsed.length > 0) {
-      setActiveTab('list');
-      setErrorMsg(null);
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedFile]);
+
+  // Re-parse timestamps whenever rawText or totalMediaDuration changes
+  useEffect(() => {
+    if (rawText.trim()) {
+      const parsed = parseTimestampsFromText(rawText, totalMediaDuration);
+      setTracks(parsed);
+      if (parsed.length > 0 && activeTab === 'text') {
+        // Auto-switch to list tab if valid tracks are detected
+      }
     } else {
-      setErrorMsg('Tidak ditemukan format timestamp yang valid. Contoh: 00:02:08 Judul Lagu');
+      setTracks([]);
     }
+  }, [rawText, totalMediaDuration]);
+
+  if (!isOpen) return null;
+
+  const handleLoadSample = () => {
+    const sample = `00:00 Intro & Theme
+01:30 Electronic Pulse
+03:45 Nightfall Melody
+06:20 Cyber Neon Drive
+08:15 Outro Credits`;
+    setRawText(sample);
+    setActiveTab('list');
   };
 
-  // Toggle selection
   const handleToggleTrack = (id: string) => {
     setTracks((prev) =>
       prev.map((t) => (t.id === id ? { ...t, selected: !t.selected } : t))
@@ -127,397 +139,376 @@ export const TimestampSplitModal: React.FC<TimestampSplitModalProps> = ({
     setTracks((prev) => prev.map((t) => ({ ...t, selected: select })));
   };
 
-  const handleUpdateTitle = (id: string, newTitle: string) => {
-    setTracks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, title: newTitle } : t))
-    );
-  };
+  const selectedTracks = tracks.filter((t) => t.selected);
 
-  const selectedCount = tracks.filter((t) => t.selected).length;
-
-  // Execute the split process
-  const handleStartSplit = async () => {
-    const tracksToProcess = tracks.filter((t) => t.selected);
-    if (tracksToProcess.length === 0) {
-      setErrorMsg('Pilih minimal 1 lagu untuk di-split.');
+  const handleProcessSplits = async () => {
+    if (!selectedFile) {
+      setErrorMessage('Pilih file audio terlebih dahulu.');
       return;
     }
 
-    setIsProcessing(true);
-    setErrorMsg(null);
-    setProgressPercent(5);
+    if (selectedTracks.length === 0) {
+      setErrorMessage('Pilih minimal 1 track untuk dipotong.');
+      return;
+    }
+
+    setIsSlicing(true);
+    setErrorMessage(null);
 
     try {
-      let masterBlob: Blob | null = null;
-      let masterBuffer: AudioBuffer | null = null;
       const audioCtx = getAudioContext();
+      let masterBuffer = decodedBufferRef.current;
 
-      // Step 1: Obtain Audio Blob
-      if (youtubeUrl) {
-        setProgressStage('Mengunduh audio YouTube master...');
-        const { blob } = await downloadYouTubeAudio(youtubeUrl, (bytes) => {
-          const mb = (bytes / (1024 * 1024)).toFixed(1);
-          setProgressStage(`Mengunduh audio YouTube (${mb} MB)...`);
+      if (!masterBuffer) {
+        setIsDecodingAudio(true);
+        masterBuffer = await decodeAudioFile(selectedFile);
+        decodedBufferRef.current = masterBuffer;
+        setIsDecodingAudio(false);
+      }
+
+      const results: SlicedTrackResult[] = [];
+      const total = selectedTracks.length;
+
+      for (let i = 0; i < total; i++) {
+        const track = selectedTracks[i];
+        setSliceProgress({
+          current: i + 1,
+          total,
+          name: track.title,
         });
-        masterBlob = blob;
-      } else if (localFile) {
-        masterBlob = localFile;
-      }
 
-      if (!masterBlob) {
-        throw new Error('Sumber audio tidak ditemukan');
-      }
+        // Small timeout to allow UI refresh
+        await new Promise((res) => setTimeout(res, 20));
 
-      // Step 2: Decode Master Audio
-      setProgressPercent(35);
-      setProgressStage('Mendekode master audio ke format PCM...');
-      const decodedBuffer: AudioBuffer = await decodeAudioFile(masterBlob);
-      masterBuffer = decodedBuffer;
-      const actualDuration = decodedBuffer.duration;
-      setTotalMediaDuration(actualDuration);
+        const slicedBuffer = sliceAudioBuffer(
+          masterBuffer,
+          track.startTime,
+          track.endTime,
+          audioCtx
+        );
 
-      // Recalculate last track end time if needed
-      const lastIndex = tracksToProcess.length - 1;
-      if (tracksToProcess[lastIndex].endTime > actualDuration) {
-        tracksToProcess[lastIndex].endTime = actualDuration;
-        tracksToProcess[lastIndex].duration = Math.max(0, actualDuration - tracksToProcess[lastIndex].startTime);
-      }
+        const wavBlob = audioBufferToWav(slicedBuffer);
 
-      // Step 3: Slice each track
-      const slicedResults: SlicedTrackResult[] = [];
-      const totalToSlice = tracksToProcess.length;
-
-      for (let i = 0; i < totalToSlice; i++) {
-        const track = tracksToProcess[i];
-        const currentNum = i + 1;
-        setProgressStage(`Memotong lagu (${currentNum}/${totalToSlice}): ${track.title}`);
-        const currentPct = 40 + Math.round((currentNum / totalToSlice) * 55);
-        setProgressPercent(currentPct);
-
-        // Ensure start and end bounds
-        const startSec = track.startTime;
-        const endSec = Math.min(track.endTime, actualDuration);
-        const duration = Math.max(0.1, endSec - startSec);
-
-        // Slice AudioBuffer in memory
-        const slicedBuf = sliceAudioBuffer(masterBuffer!, startSec, endSec, audioCtx);
-        // Encode slice to high quality WAV Blob
-        const wavBlob = audioBufferToWav(slicedBuf);
-
-        const safeTitle = track.title.trim() || `Track_${track.trackNumber}`;
-        const originalFileName = `${safeTitle.replace(/[^a-zA-Z0-9_\- ]/g, '_')}.wav`;
-
-        slicedResults.push({
-          title: safeTitle,
+        results.push({
+          title: track.title,
           blob: wavBlob,
-          buffer: slicedBuf,
-          duration,
-          originalFileName,
-          thumbnail: youtubeInfo?.thumbnail,
+          buffer: slicedBuffer,
+          duration: slicedBuffer.duration,
+          originalFileName: `${track.title}.wav`,
         });
-
-        // Small yield to let React render progress bar
-        await new Promise((resolve) => setTimeout(resolve, 15));
       }
 
-      setProgressPercent(100);
-      setProgressStage('Selesai! Memasukkan lagu ke antrean...');
-
-      // Send sliced tracks back to App
-      onTracksSplitted(slicedResults);
+      onTracksSplitted(results);
       onClose();
     } catch (err: any) {
-      console.error('Splitting error:', err);
-      setErrorMsg(err.message || 'Gagal memecah audio');
-      setIsProcessing(false);
+      console.error('Error slicing audio:', err);
+      setErrorMessage('Gagal memotong audio: ' + (err.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSlicing(false);
     }
   };
 
-  if (!isOpen) return null;
-
   return (
     <div
-      id="timestamp-split-modal-overlay"
-      className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
+      id="timestamp-split-modal"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200"
     >
-      <div
-        id="timestamp-split-modal"
-        className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]"
-      >
+      <div className="relative w-full max-w-2xl bg-zinc-950 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
         {/* Modal Header */}
-        <div className="p-4 sm:p-5 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-950/70">
+        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-zinc-800/80 bg-zinc-900/60">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-red-600/15 text-red-400 border border-red-500/30">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
               <Scissors className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <span>Split Audio Otomatis Berdasarkan Timestamp</span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono">
-                  {tracks.length} Lagu Terdeteksi
+              <h3 className="text-base sm:text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Split Audio Berdasarkan Timestamp</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Local In-Browser
                 </span>
-              </h2>
-              <p className="text-xs text-slate-400">
-                Pecah playlist / DJ mix / kompilasi YouTube menjadi lagu-lagu individual siap Roblox
+              </h3>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Potong kompilasi lagu, mix, atau album panjang menjadi track individu
               </p>
             </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            disabled={isProcessing}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
+            disabled={isSlicing}
+            className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-zinc-800 transition active:scale-95 disabled:opacity-30"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Media Banner */}
-        <div className="px-5 py-3 bg-slate-950/40 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            {youtubeInfo?.thumbnail ? (
-              <img
-                src={youtubeInfo.thumbnail}
-                alt="Thumbnail"
-                className="w-14 h-10 object-cover rounded-lg border border-slate-800 shrink-0"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-10 h-10 rounded-lg bg-slate-800 flex items-center justify-center text-slate-400 shrink-0">
-                <Music className="w-5 h-5" />
-              </div>
-            )}
-            <div className="min-w-0">
-              <h4 className="text-xs font-semibold text-white truncate">
-                {youtubeInfo?.title || localFile?.name || 'Audio Kompilasi'}
-              </h4>
-              <p className="text-[11px] text-slate-400 flex items-center gap-2">
-                {youtubeInfo?.author && <span>{youtubeInfo.author} •</span>}
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-slate-500" />
-                  Total Durasi: {formatDuration(totalMediaDuration || youtubeInfo?.duration || 0)}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          {/* Tab selector */}
-          <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
-            <button
-              onClick={() => setActiveTab('list')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'list'
-                  ? 'bg-red-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ListMusic className="w-3.5 h-3.5" />
-              <span>Daftar Lagu ({tracks.length})</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('text')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                activeTab === 'text'
-                  ? 'bg-red-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <FileText className="w-3.5 h-3.5" />
-              <span>Edit / Tempel Teks Timestamp</span>
-            </button>
-          </div>
-        </div>
-
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-5">
-          {errorMsg && (
-            <div className="mb-4 p-3 rounded-xl bg-red-950/40 border border-red-900/50 text-red-300 text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>{errorMsg}</span>
+        <div className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
+          {/* File Picker Zone */}
+          <div className="p-3.5 rounded-xl bg-zinc-900/70 border border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-zinc-800 flex items-center justify-center text-zinc-300 shrink-0">
+                <Music className="w-4 h-4 text-amber-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-semibold text-white truncate">
+                  {selectedFile ? selectedFile.name : 'Belum ada file audio yang dipilih'}
+                </div>
+                <div className="text-[11px] text-zinc-400 mt-0.5 font-mono">
+                  {isDecodingAudio ? (
+                    <span className="text-amber-400 animate-pulse">Sedang membaca durasi file...</span>
+                  ) : totalMediaDuration > 0 ? (
+                    `Durasi: ${formatDuration(totalMediaDuration)} • Ukuran: ${(
+                      (selectedFile?.size || 0) /
+                      (1024 * 1024)
+                    ).toFixed(1)} MB`
+                  ) : (
+                    'Pilih file kompilasi / album audio dari komputer Anda'
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isSlicing}
+              className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition shrink-0 active:scale-95"
+            >
+              {selectedFile ? 'Ganti File' : 'Pilih File Audio'}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.weba"
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files && e.target.files.length > 0) {
+                  setSelectedFile(e.target.files[0]);
+                }
+              }}
+            />
+          </div>
+
+          {/* Navigation Tabs */}
+          <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveTab('text')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  activeTab === 'text'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Format Teks Timestamp</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('list')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 ${
+                  activeTab === 'list'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+                <span>Daftar Lagu ({tracks.length})</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleLoadSample}
+              className="text-[11px] text-amber-400 hover:text-amber-300 transition flex items-center gap-1 font-medium"
+            >
+              <Sparkles className="w-3 h-3" />
+              <span>Contoh Format</span>
+            </button>
+          </div>
+
+          {/* Error notice */}
+          {errorMessage && (
+            <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
             </div>
           )}
 
-          {/* Tab 1: Tracks List */}
+          {/* Tab 1: Textarea Timestamp Input */}
+          {activeTab === 'text' && (
+            <div className="space-y-2">
+              <label
+                htmlFor="timestamp-textarea"
+                className="text-xs font-semibold text-zinc-300 flex items-center justify-between"
+              >
+                <span>Tempel Daftar Timestamp:</span>
+                <span className="text-[11px] text-zinc-500">Mendukung format [00:00] Judul atau 00:00 Judul</span>
+              </label>
+              <textarea
+                id="timestamp-textarea"
+                rows={7}
+                value={rawText}
+                onChange={(e) => setRawText(e.target.value)}
+                placeholder={`00:00 Intro\n03:15 Song One\n07:42 Song Two\n11:20 Outro`}
+                className="w-full bg-zinc-900 border border-zinc-700/80 rounded-xl p-3 text-xs text-white font-mono placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+              />
+              <div className="flex items-center justify-between text-[11px] text-zinc-400 pt-1">
+                <span>
+                  Terdeteksi:{' '}
+                  <strong className="text-amber-300 font-mono">{tracks.length}</strong> track lagu
+                </span>
+                {tracks.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('list')}
+                    className="text-amber-400 hover:underline font-semibold"
+                  >
+                    Lihat Daftar Hasil ➔
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Tracklist Table */}
           {activeTab === 'list' && (
             <div className="space-y-3">
-              {tracks.length === 0 ? (
-                <div className="text-center py-12 px-4 rounded-xl border-2 border-dashed border-slate-800 bg-slate-950/30">
-                  <Scissors className="w-10 h-10 text-slate-600 mx-auto mb-2" />
-                  <h4 className="text-sm font-semibold text-slate-300">Belum Ada Timestamp yang Terdeteksi</h4>
-                  <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                    Video ini mungkin tidak mencantumkan timestamp di deskripsi. Anda dapat menempelkan daftar timestamp Anda di tab <strong>Edit / Tempel Teks Timestamp</strong>.
-                  </p>
+              <div className="flex items-center justify-between text-xs text-zinc-400">
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={() => setActiveTab('text')}
-                    className="mt-4 px-4 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+                    type="button"
+                    onClick={() => handleSelectAll(true)}
+                    className="hover:text-white flex items-center gap-1"
                   >
-                    Tempel Timestamp Manual
+                    <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Pilih Semua</span>
+                  </button>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAll(false)}
+                    className="hover:text-white flex items-center gap-1"
+                  >
+                    <Square className="w-3.5 h-3.5" />
+                    <span>Batal Semua</span>
+                  </button>
+                </div>
+                <span>
+                  Dipilih: <strong className="text-white font-mono">{selectedTracks.length}</strong> /{' '}
+                  {tracks.length}
+                </span>
+              </div>
+
+              {tracks.length === 0 ? (
+                <div className="p-8 text-center bg-zinc-900/50 rounded-xl border border-zinc-800 text-xs text-zinc-400">
+                  Belum ada timestamp yang dimasukkan.{' '}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('text')}
+                    className="text-amber-400 hover:underline font-bold"
+                  >
+                    Tulis atau tempel timestamp di sini
                   </button>
                 </div>
               ) : (
-                <>
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-800/80 text-xs">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleSelectAll(true)}
-                        className="text-slate-400 hover:text-white transition flex items-center gap-1"
-                      >
-                        <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Pilih Semua</span>
-                      </button>
-                      <span className="text-slate-600">•</span>
-                      <button
-                        onClick={() => handleSelectAll(false)}
-                        className="text-slate-400 hover:text-white transition flex items-center gap-1"
-                      >
-                        <Square className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Kosongkan</span>
-                      </button>
-                    </div>
-
-                    <span className="text-slate-400 font-mono text-[11px]">
-                      Terpilih: <strong className="text-emerald-400">{selectedCount}</strong> dari {tracks.length} lagu
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2 max-h-[50vh] overflow-y-auto pr-1">
-                    {tracks.map((track) => (
-                      <div
-                        key={track.id}
-                        className={`p-2.5 rounded-xl border transition flex items-center gap-3 ${
-                          track.selected
-                            ? 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
-                            : 'bg-slate-950/30 border-slate-900 opacity-50'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={track.selected}
-                          onChange={() => handleToggleTrack(track.id)}
-                          className="w-4 h-4 rounded accent-red-600 cursor-pointer"
-                        />
-
-                        <div className="w-7 h-7 rounded-lg bg-slate-800 border border-slate-700 flex items-center justify-center font-mono text-xs font-bold text-slate-300 shrink-0">
-                          {track.trackNumber}
+                <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1">
+                  {tracks.map((t, idx) => (
+                    <div
+                      key={t.id}
+                      onClick={() => handleToggleTrack(t.id)}
+                      className={`p-2.5 rounded-lg border text-xs flex items-center justify-between gap-3 cursor-pointer transition ${
+                        t.selected
+                          ? 'bg-amber-500/10 border-amber-500/40 text-white'
+                          : 'bg-zinc-900/40 border-zinc-800 text-zinc-400 hover:bg-zinc-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`w-4 h-4 rounded flex items-center justify-center border shrink-0 ${
+                            t.selected
+                              ? 'bg-amber-500 border-amber-500 text-black'
+                              : 'border-zinc-700 bg-zinc-800'
+                          }`}
+                        >
+                          {t.selected && <Check className="w-3 h-3 stroke-[3]" />}
                         </div>
-
-                        {/* Editable Title */}
-                        <div className="flex-1 min-w-0">
-                          <input
-                            type="text"
-                            value={track.title}
-                            onChange={(e) => handleUpdateTitle(track.id, e.target.value)}
-                            placeholder={`Track ${track.trackNumber}`}
-                            className="w-full bg-transparent border-b border-transparent hover:border-slate-700 focus:border-red-500 text-xs font-semibold text-white px-1 py-0.5 focus:outline-none font-sans truncate"
-                          />
-                          <div className="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5 font-mono">
-                            <span>Mulai: {track.startTimeFormatted}</span>
-                            <span>•</span>
-                            <span>Selesai: {track.endTimeFormatted}</span>
-                          </div>
-                        </div>
-
-                        {/* Duration Pill */}
-                        <div className="text-right shrink-0">
-                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 border border-slate-700">
-                            {formatDuration(track.duration)}
-                          </span>
-                        </div>
+                        <span className="font-mono text-zinc-500 text-[11px] w-5">
+                          {(idx + 1).toString().padStart(2, '0')}.
+                        </span>
+                        <span className="font-semibold text-white truncate">{t.title}</span>
                       </div>
-                    ))}
-                  </div>
-                </>
+
+                      <div className="flex items-center gap-3 shrink-0 font-mono text-[11px] text-zinc-400">
+                        <span>
+                          {t.startTimeFormatted} - {t.endTimeFormatted}
+                        </span>
+                        <span className="text-amber-300 font-bold">
+                          ({formatDuration(t.duration)})
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}
 
-          {/* Tab 2: Raw Timestamp Text Area */}
-          {activeTab === 'text' && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                  <FileText className="w-4 h-4 text-red-400" />
-                  <span>Daftar Teks Timestamp (Satu lagu per baris)</span>
-                </label>
-                <span className="text-[10px] text-slate-500">Mendukung format HH:MM:SS atau MM:SS</span>
+          {/* Slicing Progress Animation */}
+          {isSlicing && (
+            <div className="p-4 rounded-xl bg-zinc-900 border border-amber-500/40 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-amber-300 flex items-center gap-2">
+                  <Scissors className="w-3.5 h-3.5 animate-spin" />
+                  <span>
+                    Memotong ({sliceProgress.current} / {sliceProgress.total}): {sliceProgress.name}
+                  </span>
+                </span>
+                <span className="font-mono text-zinc-400">
+                  {Math.round((sliceProgress.current / sliceProgress.total) * 100)}%
+                </span>
               </div>
-
-              <textarea
-                value={rawText}
-                onChange={(e) => setRawText(e.target.value)}
-                placeholder={`00:00:00 Still Into You (WENNAZ 'HIPDUT' Edit)\n00:02:08 One Time (WENNAZ 'HIPDUT' Edit)\n00:04:31 Bloodline (WENNAZ 'HIPDUT' Edit)\n00:07:01 Kehlani - Out The Window (NGHTYBOY 'HIPDUT' Again Edit)...`}
-                rows={12}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-red-500 leading-relaxed"
-              />
-
-              <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-                <div className="text-[11px] text-slate-400">
-                  Format otomatis mendeteksi tanda kurung <code className="text-slate-300 font-mono">[02:08]</code>, strip <code className="text-slate-300 font-mono">02:08 - Judul</code>, atau nomor urut.
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleApplyText}
-                  className="px-4 py-2 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 flex items-center gap-1.5 transition"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Terapkan & Parse Timestamp</span>
-                </button>
+              <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-150"
+                  style={{
+                    width: `${Math.round((sliceProgress.current / sliceProgress.total) * 100)}%`,
+                  }}
+                />
               </div>
             </div>
           )}
         </div>
 
-        {/* Progress Bar (when splitting) */}
-        {isProcessing && (
-          <div className="px-5 py-3 bg-slate-950 border-t border-slate-800">
-            <div className="flex items-center justify-between gap-2 text-xs mb-1.5">
-              <span className="text-red-300 font-medium flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-red-400" />
-                <span>{progressStage}</span>
-              </span>
-              <span className="font-mono text-slate-400">{progressPercent}%</span>
-            </div>
-            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-red-600 to-amber-500 transition-all duration-300 rounded-full"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          </div>
-        )}
-
         {/* Modal Footer */}
-        <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/70 flex flex-wrap items-center justify-between gap-3">
+        <div className="p-4 sm:p-5 border-t border-zinc-800/80 bg-zinc-900/60 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
-            disabled={isProcessing}
-            className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
+            disabled={isSlicing}
+            className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition"
           >
             Batal
           </button>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleStartSplit}
-              disabled={isProcessing || selectedCount === 0}
-              className="px-5 py-2.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-600/25 disabled:opacity-50 transition flex items-center gap-2"
-            >
-              {isProcessing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Sedang Memecah Audio...</span>
-                </>
-              ) : (
-                <>
-                  <Scissors className="w-4 h-4" />
-                  <span>Pecah ({selectedCount} Lagu) & Masukkan ke Antrean</span>
-                </>
-              )}
-            </button>
-          </div>
+          <button
+            type="button"
+            id="start-slicing-btn"
+            onClick={handleProcessSplits}
+            disabled={isSlicing || selectedTracks.length === 0 || !selectedFile}
+            className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 shadow-lg shadow-amber-500/20 disabled:opacity-40 transition flex items-center gap-2 active:scale-95"
+          >
+            <Scissors className="w-4 h-4 fill-current" />
+            <span>
+              {isSlicing
+                ? 'Sedang Memotong Audio...'
+                : `Potong & Masukkan ke Antrean (${selectedTracks.length})`}
+            </span>
+          </button>
         </div>
       </div>
     </div>
