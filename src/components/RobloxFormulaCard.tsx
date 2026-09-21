@@ -6,7 +6,6 @@ import {
   Copy,
   Check,
   Zap,
-  Code,
   ArrowRight,
   Info,
 } from 'lucide-react';
@@ -23,7 +22,6 @@ export const RobloxFormulaCard: React.FC<RobloxFormulaCardProps> = ({
   onCustomSpeedChange,
 }) => {
   const [copiedSpeed, setCopiedSpeed] = useState(false);
-  const [copiedLua, setCopiedLua] = useState(false);
   const [customSpeedInput, setCustomSpeedInput] = useState<string>(activeSpeedUp.toString());
 
   const currentRobloxSpeed = parseFloat((1 / Math.max(0.01, activeSpeedUp)).toFixed(4));
@@ -49,22 +47,6 @@ export const RobloxFormulaCard: React.FC<RobloxFormulaCardProps> = ({
     navigator.clipboard.writeText(currentRobloxSpeed.toString());
     setCopiedSpeed(true);
     setTimeout(() => setCopiedSpeed(false), 2000);
-  };
-
-  const copyLuaScript = () => {
-    const script = `-- Roblox Audio Playback Script (Kembali ke Tempo & Pitch Normal)
-local SoundService = game:GetService("SoundService")
-local sound = Instance.new("Sound")
-sound.Name = "ProcessedAudio"
-sound.SoundId = "rbxassetid://YOUR_AUDIO_ID" -- Ganti dengan ID Audio Roblox Anda
-sound.PlaybackSpeed = ${currentRobloxSpeed} -- Formula: 1 / ${activeSpeedUp}x percepatan
-sound.Volume = 1
-sound.Looped = false
-sound.Parent = SoundService
-sound:Play()`;
-    navigator.clipboard.writeText(script);
-    setCopiedLua(true);
-    setTimeout(() => setCopiedLua(false), 2000);
   };
 
   // Sample duration calculation for live illustration
@@ -97,19 +79,6 @@ sound:Play()`;
               Audio dipercepat di sini agar lolos batas ukuran 20MB, lalu dinormalkan kembali di Roblox melalui PlaybackSpeed.
             </p>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            id="copy-lua-script-btn"
-            onClick={copyLuaScript}
-            className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1.5 active:scale-95 shadow-sm"
-            title="Salin snippet script Roblox Luau"
-          >
-            {copiedLua ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Code className="w-3.5 h-3.5 text-red-400" />}
-            <span>{copiedLua ? 'Script Disalin!' : 'Copy Script Luau'}</span>
-          </button>
         </div>
       </div>
 

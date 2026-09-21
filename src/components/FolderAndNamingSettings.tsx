@@ -3,8 +3,6 @@ import { FolderConfig, NamingStyle } from '../types';
 import {
   Folder,
   Tag,
-  Eye,
-  CheckCircle2,
   HardDrive,
   Settings2,
 } from 'lucide-react';
@@ -42,24 +40,6 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
       namingStyle,
     });
   };
-
-  // Preview generated sample file name
-  const sampleBase = 'Alan_Walker_Faded';
-  let previewName = '';
-  switch (config.namingStyle) {
-    case 'clean':
-      previewName = `${config.customPrefix}${sampleBase}_0.43.ogg`;
-      break;
-    case 'roblox':
-      previewName = `${config.customPrefix}${sampleBase}_Roblox0.43.ogg`;
-      break;
-    case 'detailed':
-      previewName = `${config.customPrefix}${sampleBase}_[2.33x_PBS0.43].ogg`;
-      break;
-    case 'original':
-      previewName = `${config.customPrefix}${sampleBase}.ogg`;
-      break;
-  }
 
   return (
     <div
@@ -154,7 +134,7 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
             <span>Gaya Format Nama File:</span>
           </label>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {namingStyles.map((style) => (
               <button
                 type="button"
@@ -172,18 +152,6 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
                 </div>
               </button>
             ))}
-          </div>
-
-          {/* Live Preview Card */}
-          <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800 flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <Eye className="w-4 h-4 text-purple-400 shrink-0" />
-              <div className="truncate">
-                <div className="text-[10px] text-zinc-400 font-medium">Contoh Hasil Nama File:</div>
-                <div className="text-xs font-mono font-bold text-white truncate">{previewName}</div>
-              </div>
-            </div>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
           </div>
         </div>
       </div>

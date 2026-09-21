@@ -3,15 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>Audio Manipulator</title>
+    <title>BindStudio Audio Editor</title>
     <meta name="description" content="Studio audio manipulation tool for Roblox developers with playback speed presets, pitch resampling, gain amplification, reverb effects, smooth fades, local timestamp audio splitter, custom folder naming, and batch OGG/ZIP exports." />
-    <meta property="og:title" content="Audio Manipulator" />
+    <meta property="og:title" content="BindStudio Audio Editor" />
     <meta property="og:description" content="Studio audio manipulation tool for Roblox developers with playback speed presets, pitch resampling, gain amplification, reverb effects, smooth fades, local timestamp audio splitter, custom folder naming, and batch OGG/ZIP exports." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Safeguard against scripts or browser extensions attempting to assign window.fetch when fetch is getter-only
+      (function() {
+        try {
+          var target = window;
+          while (target) {
+            var desc = Object.getOwnPropertyDescriptor(target, 'fetch');
+            if (desc) {
+              if (!desc.set && desc.configurable) {
+                var currentFetch = window.fetch;
+                Object.defineProperty(target, 'fetch', {
+                  get: function() { return currentFetch; },
+                  set: function(val) { currentFetch = val; },
+                  configurable: true,
+                  enumerable: true
+                });
+              }
+              break;
+            }
+            target = Object.getPrototypeOf(target);
+          }
+        } catch (e) {}
+
+        window.addEventListener('error', function(event) {
+          if (event && event.message && event.message.indexOf('fetch') !== -1 && event.message.indexOf('getter') !== -1) {
+            event.preventDefault();
+            return true;
+          }
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

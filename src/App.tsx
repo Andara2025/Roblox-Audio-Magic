@@ -511,7 +511,7 @@ Tabel Preset Roblox:
 - Speed-up: 5.0x   -> Sound.PlaybackSpeed = 0.20
 Formula: PlaybackSpeed = 1 / Speed-Up
 
-Dibuat dengan Audio Manipulator Studio Tool.
+Dibuat dengan BindStudio Audio Editor.
 `;
       targetFolder!.file('PETUNJUK_ROBLOX.txt', readmeText);
 
@@ -599,7 +599,7 @@ Dibuat dengan Audio Manipulator Studio Tool.
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="font-extrabold text-base sm:text-lg text-white tracking-tight">
-                  Audio Manipulator
+                  BindStudio Audio Editor
                 </h1>
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-300 border border-red-500/30">
                   Roblox Studio Edition

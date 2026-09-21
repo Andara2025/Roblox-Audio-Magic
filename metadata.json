@@ -1,5 +1,5 @@
 {
-  "name": "Audio Manipulator",
+  "name": "BindStudio Audio Editor",
   "description": "Studio audio manipulation tool for Roblox developers with playback speed presets, pitch resampling, gain amplification, reverb effects, smooth fades, local timestamp audio splitter, custom folder naming, and batch OGG/ZIP exports.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
