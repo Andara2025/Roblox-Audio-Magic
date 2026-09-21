@@ -1,0 +1,6 @@
+{
+  "name": "Audio Manipulator",
+  "description": "Audio manipulation tool with queue system, Roblox playback speed presets, gain amplification, reverb effects, fade transitions, YouTube timestamp playlist splitter, custom output folder selection, clean file naming, and batch downloads.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
