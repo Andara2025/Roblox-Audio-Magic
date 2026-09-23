@@ -46,6 +46,9 @@ const DEFAULT_SETTINGS: AudioSettings = {
   fadeInDuration: 2.0,
   fadeOutEnabled: false,
   fadeOutDuration: 3.0,
+  remasterProfile: 'none',
+  remasterIntensity: 0.7,
+  autoFitRobloxLimit: true,
 };
 
 export default function App() {
@@ -196,6 +199,7 @@ export default function App() {
                   originalBuffer: buffer,
                   duration: buffer.duration,
                   status: 'idle',
+                  errorMessage: undefined,
                 }
               : q
           )
@@ -208,7 +212,9 @@ export default function App() {
               ? {
                   ...q,
                   status: 'error',
-                  errorMessage: 'Gagal membaca format file audio.',
+                  errorMessage:
+                    (err as Error)?.message ||
+                    'Gagal membaca format file audio. Pastikan file tidak rusak.',
                 }
               : q
           )
@@ -265,15 +271,32 @@ export default function App() {
     let buffer = item.originalBuffer;
     if (!buffer && item.originalBlob) {
       setQueue((prev) =>
-        prev.map((q) => (q.id === id ? { ...q, status: 'decoding' } : q))
+        prev.map((q) => (q.id === id ? { ...q, status: 'decoding', errorMessage: undefined } : q))
       );
       try {
-        buffer = await decodeAudioFile(item.originalBlob);
-      } catch {
+        const decoded = await decodeAudioFile(item.originalBlob);
+        buffer = decoded;
         setQueue((prev) =>
           prev.map((q) =>
             q.id === id
-              ? { ...q, status: 'error', errorMessage: 'Gagal decode audio.' }
+              ? {
+                  ...q,
+                  originalBuffer: decoded,
+                  duration: decoded.duration,
+                  errorMessage: undefined,
+                }
+              : q
+          )
+        );
+      } catch (err: unknown) {
+        setQueue((prev) =>
+          prev.map((q) =>
+            q.id === id
+              ? {
+                  ...q,
+                  status: 'error',
+                  errorMessage: (err as Error)?.message || 'Gagal decode audio.',
+                }
               : q
           )
         );
@@ -491,18 +514,26 @@ export default function App() {
         blobToDownload = item.oggBlob;
       } else if (item.wavBlob) {
         try {
-          showNotification('Mengonversi ke OGG Vorbis ringan...', 'info');
-          const ogg = await convertWavToOgg(item.wavBlob);
+          showNotification('Mengonversi ke OGG Vorbis (Roblox Safe < 20MB)...', 'info');
+          const ogg = await convertWavToOgg(
+            item.wavBlob,
+            item.settings.oggQuality ?? 7,
+            item.processedDuration || item.duration,
+            item.settings.autoFitRobloxLimit ?? true
+          );
           item.oggBlob = ogg;
           blobToDownload = ogg;
         } catch (e) {
           console.warn('Gagal konversi ke OGG:', e);
-          showNotification('Gagal mengonversi ke OGG, mengunduh WAV', 'error');
-          blobToDownload = item.wavBlob;
+          showNotification(`Gagal konversi ke OGG: ${(e as Error).message}. File tidak diunduh sebagai WAV untuk mencegah penolakan 20MB Roblox.`, 'error');
+          return;
         }
       }
     } else if (targetFormat === 'wav') {
       blobToDownload = item.wavBlob || item.processedBlob;
+      if (blobToDownload && blobToDownload.size > 20 * 1024 * 1024) {
+        showNotification(`Peringatan: File WAV berukuran ${(blobToDownload.size / (1024 * 1024)).toFixed(1)}MB akan ditolak oleh batas 20MB Roblox! Sebaiknya gunakan format OGG Vorbis.`, 'error');
+      }
     }
 
     if (!blobToDownload) return;

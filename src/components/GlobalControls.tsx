@@ -413,7 +413,7 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
           </div>
 
           {/* Realtime Size & Roblox Limit Safety Estimation */}
-          <div className="mt-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px]">
+          <div className="mt-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px] space-y-2">
             <div className="flex items-center justify-between text-zinc-300">
               <span className="flex items-center gap-1.5 font-semibold">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -431,7 +431,7 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                   : '~32.0 MB (OVER 20MB)'}
               </span>
             </div>
-            <div className="mt-1 text-[10px] text-zinc-400">
+            <div className="text-[10px] text-zinc-400">
               {settings.outputFormat === 'ogg' ? (
                 <span className="text-emerald-400 font-medium">
                   ✓ Aman terkontrol: Menggunakan ~13% dari batas kuota 20MB Roblox.
@@ -441,6 +441,35 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                   ❌ Melebihi kuota: 160% dari batas 20MB Roblox (Pasti Gagal Upload).
                 </span>
               )}
+            </div>
+
+            {/* Auto-Fit Roblox Safeguard Switch */}
+            <div className="pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <Lock className="w-3 h-3 text-cyan-400" />
+                <span className="text-zinc-300 font-medium text-[11px]">
+                  Garansi Batas 20MB Roblox (Auto-Fit Bitrate)
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeSettings({
+                    ...settings,
+                    autoFitRobloxLimit: !(settings.autoFitRobloxLimit ?? true),
+                  })
+                }
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                  (settings.autoFitRobloxLimit ?? true) ? 'bg-emerald-500' : 'bg-zinc-700'
+                }`}
+                title="Otomatis sesuaikan bitrate untuk lagu panjang agar tidak pernah melampaui batas 20MB Roblox"
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                    (settings.autoFitRobloxLimit ?? true) ? 'translate-x-4' : 'translate-x-0'
+                  }`}
+                />
+              </button>
             </div>
           </div>
         </div>

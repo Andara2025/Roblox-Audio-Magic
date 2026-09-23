@@ -1,5 +1,7 @@
 export type ReverbType = 'none' | 'room' | 'hall' | 'cathedral' | 'space';
 
+export type RemasterProfile = 'none' | 'clarity' | 'bass_punch' | 'vocal_air' | 'loudness_war';
+
 export interface RobloxSpeedPreset {
   id: string;
   label: string;
@@ -88,6 +90,9 @@ export interface AudioSettings {
   fadeInDuration: number; // in seconds (e.g. 2.0s)
   fadeOutEnabled: boolean; // on/off toggle
   fadeOutDuration: number; // in seconds (e.g. 3.0s)
+  remasterProfile?: RemasterProfile;
+  remasterIntensity?: number;
+  autoFitRobloxLimit?: boolean; // Otomatis turunkan bitrate jika audio panjang agar file selalu < 19.5MB
 }
 
 export type QueueItemStatus = 'idle' | 'decoding' | 'processing' | 'ready' | 'error';

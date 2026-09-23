@@ -14,19 +14,254 @@ export function getAudioContext(): AudioContext {
 }
 
 /**
- * Decode an ArrayBuffer or File into an AudioBuffer
+ * Upload large input audio file in chunks (5MB) to server universal decoder
+ */
+async function decodeViaChunks(blob: Blob): Promise<ArrayBuffer> {
+  const CHUNK_SIZE = 5 * 1024 * 1024;
+  const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
+  const sessionId = 'dec_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+
+  let lastBuffer: ArrayBuffer | null = null;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, blob.size);
+    const chunkBlob = blob.slice(start, end);
+
+    const query = new URLSearchParams({
+      sessionId,
+      chunkIndex: i.toString(),
+      totalChunks: totalChunks.toString(),
+    });
+
+    const res = await fetch(`/api/audio/decode/chunk?${query.toString()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      body: chunkBlob,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `Gagal transfer chunk decode ${i + 1}/${totalChunks} (Status ${res.status})`);
+    }
+
+    if (i === totalChunks - 1) {
+      lastBuffer = await res.arrayBuffer();
+    }
+  }
+
+  if (!lastBuffer || lastBuffer.byteLength === 0) {
+    throw new Error('Hasil decode audio dari server kosong');
+  }
+
+  return lastBuffer;
+}
+
+/**
+ * Upload large audio file in chunks (5MB) to server universal converter
+ */
+async function convertViaChunks(
+  blob: Blob,
+  params: Record<string, string>
+): Promise<Blob> {
+  const CHUNK_SIZE = 5 * 1024 * 1024;
+  const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
+  const sessionId = 'conv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
+
+  let lastBlob: Blob | null = null;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start = i * CHUNK_SIZE;
+    const end = Math.min(start + CHUNK_SIZE, blob.size);
+    const chunkBlob = blob.slice(start, end);
+
+    const query = new URLSearchParams({
+      ...params,
+      sessionId,
+      chunkIndex: i.toString(),
+      totalChunks: totalChunks.toString(),
+    });
+
+    const res = await fetch(`/api/audio/convert/chunk?${query.toString()}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+      body: chunkBlob,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(
+        err.error || `Gagal transfer chunk konversi ${i + 1}/${totalChunks} (Status ${res.status})`
+      );
+    }
+
+    if (i === totalChunks - 1) {
+      lastBlob = await res.blob();
+    }
+  }
+
+  if (!lastBlob || lastBlob.size === 0) {
+    throw new Error('Hasil konversi OGG dari server kosong');
+  }
+
+  return lastBlob;
+}
+
+/**
+ * Strips ID3v2 metadata headers and embedded album art/covers from MP3/audio buffers.
+ * In MP3 files, album art (APIC frame) is embedded in the ID3v2 tag at the start of the file.
+ * Many browsers fail to decode files with huge or corrupted cover images (e.g. progressive JPEG or WebP inside ID3).
+ * Removing this header yields pristine MPEG audio frames, significantly reducing memory footprint
+ * and enabling instant 100% native browser decoding without any network upload.
+ */
+export function stripCoverAndID3(buffer: ArrayBuffer): ArrayBuffer {
+  const u8 = new Uint8Array(buffer);
+  if (u8.length < 10) return buffer;
+
+  let start = 0;
+  // Check if file starts with 'ID3' (ID3v2)
+  if (u8[0] === 0x49 && u8[1] === 0x44 && u8[2] === 0x33) {
+    // 4-byte synchsafe integer size
+    const tagSize =
+      ((u8[6] & 0x7f) << 21) |
+      ((u8[7] & 0x7f) << 14) |
+      ((u8[8] & 0x7f) << 7) |
+      (u8[9] & 0x7f);
+    const hasFooter = (u8[5] & 0x10) !== 0;
+    start = 10 + tagSize + (hasFooter ? 10 : 0);
+  }
+
+  // Scan forward for the first valid MPEG sync frame (0xFF followed by 111xxxxx)
+  let syncFound = false;
+  for (let i = start; i < u8.length - 1; i++) {
+    // 0xFF followed by high 3 bits set (MPEG audio sync word: 11111111 111xxxxx)
+    // and valid layer (bits 1-2 not 00)
+    if (u8[i] === 0xff && (u8[i + 1] & 0xe0) === 0xe0) {
+      const layer = (u8[i + 1] >> 1) & 0x03;
+      if (layer !== 0) {
+        start = i;
+        syncFound = true;
+        break;
+      }
+    }
+  }
+
+  // Also strip ID3v1 tag from the end if present (last 128 bytes starting with "TAG")
+  let end = u8.length;
+  if (end - start > 128) {
+    if (
+      u8[end - 128] === 0x54 && // 'T'
+      u8[end - 127] === 0x41 && // 'A'
+      u8[end - 126] === 0x47 // 'G'
+    ) {
+      end -= 128;
+    }
+  }
+
+  if (syncFound && start > 0) {
+    return buffer.slice(start, end);
+  }
+
+  return buffer;
+}
+
+/**
+ * Decode any Audio File (MP3, OGG, WAV, FLAC, M4A, etc.)
+ * 1. Uses high-speed native browser WebAudio decoding first.
+ * 2. If native decoding fails due to embedded album cover art (ID3 APIC), it strips/destroys
+ *    the cover art directly in browser memory and retries native decode instantly.
+ * 3. If still unsupported (e.g. OGG Opus, Safari incompatibility), it seamlessly falls back
+ *    to the server-side FFmpeg universal decoder (with chunked upload support).
  */
 export async function decodeAudioFile(fileOrBlob: Blob | File | ArrayBuffer): Promise<AudioBuffer> {
   const ctx = getAudioContext();
   let arrayBuffer: ArrayBuffer;
+  let sourceBlob: Blob;
+
   if (fileOrBlob instanceof ArrayBuffer) {
     arrayBuffer = fileOrBlob;
+    sourceBlob = new Blob([arrayBuffer]);
   } else {
+    sourceBlob = fileOrBlob;
     arrayBuffer = await fileOrBlob.arrayBuffer();
   }
 
-  // Use promise-based decodeAudioData
-  return await ctx.decodeAudioData(arrayBuffer.slice(0));
+  // 1. Try native browser decodeAudioData first
+  try {
+    return await ctx.decodeAudioData(arrayBuffer.slice(0));
+  } catch (nativeErr) {
+    console.warn(
+      '[AudioEngine] Initial native decode failed. Checking for embedded cover art / ID3 tags...',
+      nativeErr
+    );
+
+    // 2. Client-Side Cover Destroyer:
+    // Strip ID3v2 header and embedded album art image (APIC frame) directly in memory
+    const strippedBuffer = stripCoverAndID3(arrayBuffer);
+    if (strippedBuffer.byteLength < arrayBuffer.byteLength) {
+      const removedBytes = arrayBuffer.byteLength - strippedBuffer.byteLength;
+      console.log(
+        `[AudioEngine] Cover/metadata destroyed (${(removedBytes / 1024).toFixed(1)} KB removed). Retrying native decode...`
+      );
+      try {
+        const decoded = await ctx.decodeAudioData(strippedBuffer.slice(0));
+        console.log('[AudioEngine] Instant client-side decode succeeded after stripping cover art!');
+        return decoded;
+      } catch (stripErr) {
+        console.warn('[AudioEngine] Native decode still failed after cover strip, escalating to server FFmpeg...', stripErr);
+      }
+    }
+
+    // Update sourceBlob with stripped audio if smaller to save bandwidth
+    const uploadBlob =
+      strippedBuffer.byteLength < arrayBuffer.byteLength
+        ? new Blob([strippedBuffer], { type: 'audio/mpeg' })
+        : sourceBlob;
+
+    // 3. Server-side FFmpeg fallback (handles ID3 APIC covers, Opus in Ogg, Chained Vorbis, corrupt headers)
+    try {
+      let cleanBuffer: ArrayBuffer;
+
+      // If file is >= 8MB, use chunked upload to safely bypass Cloud Run limits
+      if (uploadBlob.size >= 8 * 1024 * 1024) {
+        cleanBuffer = await decodeViaChunks(uploadBlob);
+      } else {
+        try {
+          const res = await fetch('/api/audio/decode', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/octet-stream',
+            },
+            body: uploadBlob,
+          });
+
+          if (res.status === 413) {
+            cleanBuffer = await decodeViaChunks(uploadBlob);
+          } else if (!res.ok) {
+            console.warn('[AudioEngine] Direct decode returned non-ok, retrying via chunks...', res.status);
+            cleanBuffer = await decodeViaChunks(uploadBlob);
+          } else {
+            cleanBuffer = await res.arrayBuffer();
+          }
+        } catch (fetchErr) {
+          console.warn('[AudioEngine] Direct decode network error, retrying via chunks...', fetchErr);
+          cleanBuffer = await decodeViaChunks(uploadBlob);
+        }
+      }
+
+      // Browser Web Audio decodes tag-free studio 320kbps MP3 or PCM WAV with 100% reliability
+      return await ctx.decodeAudioData(cleanBuffer);
+    } catch (serverErr) {
+      console.error('[AudioEngine] Server FFmpeg fallback also failed:', serverErr);
+      throw new Error(
+        `Format audio tidak didukung atau file rusak: ${(nativeErr as Error)?.message || 'Gagal decode'}`
+      );
+    }
+  }
 }
 
 /**
@@ -302,7 +537,12 @@ export async function processAudio(
 
   if (settings.outputFormat === 'ogg') {
     try {
-      oggBlob = await convertWavToOgg(wavBlob, settings.oggQuality ?? 7);
+      oggBlob = await convertWavToOgg(
+        wavBlob,
+        settings.oggQuality ?? 7,
+        renderedBuffer.duration,
+        settings.autoFitRobloxLimit ?? true
+      );
       mainBlob = oggBlob;
     } catch (e) {
       console.error('Konversi OGG gagal:', e);
@@ -402,29 +642,76 @@ export function getRobloxSafetyStatus(sizeBytes: number): {
 }
 
 /**
- * Convert WAV Blob to OGG Vorbis via server FFmpeg with specific bitrate (default 224kbps)
+ * Convert WAV Blob to OGG Vorbis via server FFmpeg with Roblox 20MB compliance
  */
-export async function convertWavToOgg(wavBlob: Blob, quality: number = 7): Promise<Blob> {
+export async function convertWavToOgg(
+  wavBlob: Blob,
+  quality: number = 7,
+  durationSeconds?: number,
+  autoFitRoblox: boolean = true
+): Promise<Blob> {
   const bitrateStr = getBitrateString(quality);
-  const res = await fetch(`/api/audio/convert?format=ogg&quality=${encodeURIComponent(quality)}&bitrate=${encodeURIComponent(bitrateStr)}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'audio/wav',
-    },
-    body: wavBlob,
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Gagal konversi ke OGG (Status ${res.status})`);
+  const queryParams: Record<string, string> = {
+    format: 'ogg',
+    quality: quality.toString(),
+    bitrate: bitrateStr,
+    autoFit: autoFitRoblox ? 'true' : 'false',
+  };
+  if (durationSeconds && durationSeconds > 0) {
+    queryParams.duration = durationSeconds.toFixed(2);
   }
 
-  const resultBlob = await res.blob();
-  if (resultBlob.size === 0) {
-    throw new Error('Hasil konversi OGG kosong');
+  // If WAV blob is >= 10MB, always use chunked upload to safely bypass Cloud Run 32MB limit
+  if (wavBlob.size >= 10 * 1024 * 1024) {
+    return await convertViaChunks(wavBlob, queryParams);
   }
 
-  return resultBlob;
+  const queryStr = new URLSearchParams(queryParams).toString();
+  try {
+    const res = await fetch(`/api/audio/convert?${queryStr}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'audio/wav',
+      },
+      body: wavBlob,
+    });
+
+    if (res.status === 413) {
+      return await convertViaChunks(wavBlob, queryParams);
+    }
+
+    if (!res.ok) {
+      console.warn('[AudioEngine] Direct convert returned non-ok, retrying via chunks...', res.status);
+      return await convertViaChunks(wavBlob, queryParams);
+    }
+
+    const resultBlob = await res.blob();
+    if (resultBlob.size === 0) {
+      throw new Error('Hasil konversi OGG kosong');
+    }
+
+    return resultBlob;
+  } catch (err) {
+    console.warn('[AudioEngine] Direct convert failed, retrying via chunks...', err);
+    return await convertViaChunks(wavBlob, queryParams);
+  }
+}
+
+/**
+ * Calculate the maximum safe bitrate to strictly guarantee file stays below Roblox limit
+ */
+export function calculateSafeBitrate(durationSeconds: number, targetMaxMb: number = 18.5): number {
+  if (durationSeconds <= 0) return 224;
+  const targetBits = targetMaxMb * 1024 * 1024 * 8;
+  const maxKbps = Math.floor(targetBits / (durationSeconds * 1000));
+  if (maxKbps >= 320) return 320;
+  if (maxKbps >= 256) return 256;
+  if (maxKbps >= 224) return 224;
+  if (maxKbps >= 192) return 192;
+  if (maxKbps >= 160) return 160;
+  if (maxKbps >= 128) return 128;
+  if (maxKbps >= 96) return 96;
+  return Math.max(48, maxKbps);
 }
 
 /**

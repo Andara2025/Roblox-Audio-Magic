@@ -479,6 +479,32 @@ export const QueueList: React.FC<QueueListProps> = ({
                 </div>
               </div>
 
+              {/* Error Message & Retry Banner */}
+              {item.status === 'error' && (
+                <div className="mx-3.5 sm:mx-4 mb-3.5 p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 text-xs text-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-rose-300">
+                        {item.errorMessage || 'Gagal membaca format file audio.'}
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        File MP3 dengan gambar cover besar atau OGG non-standar dapat didecode otomatis menggunakan Server FFmpeg engine.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onProcessItem(item.id)}
+                    className="self-start sm:self-auto px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition active:scale-95 shrink-0"
+                    title="Coba decode dan proses ulang file audio ini dengan Server FFmpeg"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Coba Decode Ulang</span>
+                  </button>
+                </div>
+              )}
+
               {/* Progress bar during processing */}
               {(item.status === 'processing' || item.status === 'decoding') && (
                 <div className="px-4 pb-3">
