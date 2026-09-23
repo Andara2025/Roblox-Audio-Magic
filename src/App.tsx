@@ -18,6 +18,7 @@ import { GlobalControls } from './components/GlobalControls';
 import { FolderAndNamingSettings } from './components/FolderAndNamingSettings';
 import { QueueList } from './components/QueueList';
 import { AudioPlayerBar } from './components/AudioPlayerBar';
+import { LivePreviewPlayer } from './components/LivePreviewPlayer';
 import { TimestampSplitModal, SlicedTrackResult } from './components/TimestampSplitModal';
 import {
   Headphones,
@@ -34,6 +35,7 @@ const DEFAULT_SETTINGS: AudioSettings = {
   speedUp: 2.326,
   robloxPlaybackSpeed: 0.43,
   outputFormat: 'ogg', // Default: OGG Vorbis (~90% lebih ringan, lolos batas 20MB Roblox)
+  oggQuality: 7, // Standar Emas Roblox 224 kbps (Jernih kristal, bebas kompresi cempreng, ukuran hanya ~2.5 - 4MB, 100% lolos batas 20MB Roblox)
   pitchMode: 'resample',
   amplifyDb: 0,
   preserveQuality: true,
@@ -56,8 +58,8 @@ export default function App() {
       // fallback
     }
     return {
-      folderName: 'Roblox_Audio_Output',
-      namingStyle: 'clean', // Default: clean, e.g. Song_0.43.ogg
+      folderName: 'Roblox Audio Output',
+      namingStyle: 'clean', // Default: clean, e.g. Artist - Song.ogg (no underscores or weird symbols)
       includeEffectsInName: false,
       customPrefix: '',
     };
@@ -81,6 +83,36 @@ export default function App() {
   const showNotification = (message: string, type: 'success' | 'info' | 'error' = 'info') => {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
+  };
+
+  // Master settings update that automatically synchronizes to queue items
+  const handleUpdateMasterSettings = (
+    newSettingsOrFn: AudioSettings | ((prev: AudioSettings) => AudioSettings)
+  ) => {
+    setSettings((prev) => {
+      const nextSettings =
+        typeof newSettingsOrFn === 'function' ? newSettingsOrFn(prev) : newSettingsOrFn;
+
+      // Automatically sync all queue items that do NOT have individual custom overrides
+      setQueue((prevQueue) =>
+        prevQueue.map((item) => {
+          if (item.hasCustomSettings) return item;
+          return {
+            ...item,
+            settings: { ...nextSettings },
+            outputFileName: generateOutputName(
+              item.originalFileName,
+              nextSettings,
+              nextSettings.outputFormat,
+              folderConfig
+            ),
+            needsReProcess: item.status === 'ready',
+          };
+        })
+      );
+
+      return nextSettings;
+    });
   };
 
   // Update folder configuration and refresh queue item names
@@ -294,6 +326,7 @@ export default function App() {
                 ...q,
                 status: 'ready',
                 progress: 100,
+                needsReProcess: false,
                 processedBuffer,
                 processedBlob: mainBlob,
                 wavBlob,
@@ -328,34 +361,60 @@ export default function App() {
     setIsProcessingAll(true);
     showNotification(`Memulai pemrosesan ${queue.length} audio...`, 'info');
 
-    for (const item of queue) {
-      await processItemById(item.id);
+    // Ensure all items without custom settings are synced with latest master settings
+    const targetQueue: QueueItem[] = queue.map((item) => ({
+      ...item,
+      settings: item.hasCustomSettings ? item.settings : { ...settings },
+      outputFileName: generateOutputName(
+        item.originalFileName,
+        item.hasCustomSettings ? item.settings : settings,
+        (item.hasCustomSettings ? item.settings : settings).outputFormat,
+        folderConfig
+      ),
+    }));
+    setQueue(targetQueue);
+
+    for (const item of targetQueue) {
+      await processItemById(item.id, targetQueue);
     }
 
     setIsProcessingAll(false);
     showNotification('Semua audio di antrean berhasil diproses!', 'success');
   };
 
-  // Apply current global settings to all queue items
-  const handleApplyToAllQueue = () => {
-    setQueue((prev) =>
-      prev.map((item) => ({
-        ...item,
-        settings: { ...settings },
-        outputFileName: generateOutputName(
-          item.originalFileName,
-          settings,
-          settings.outputFormat,
-          folderConfig
-        ),
-        // If it was ready, prompt re-processing
-        status: item.status === 'ready' ? 'idle' : item.status,
-      }))
-    );
-    showNotification('Pengaturan berhasil diterapkan ke semua item antrean', 'success');
+  // Apply current global settings to all queue items and re-process them immediately
+  const handleApplyToAllQueue = async () => {
+    if (queue.length === 0) {
+      showNotification('Antrean kosong, tidak ada file untuk diterapkan', 'info');
+      return;
+    }
+
+    const updatedQueue: QueueItem[] = queue.map((item) => ({
+      ...item,
+      settings: { ...settings },
+      hasCustomSettings: false,
+      needsReProcess: false,
+      outputFileName: generateOutputName(
+        item.originalFileName,
+        settings,
+        settings.outputFormat,
+        folderConfig
+      ),
+      status: 'idle' as const,
+    }));
+
+    setQueue(updatedQueue);
+    showNotification(`Menerapkan parameter & memproses ulang ${updatedQueue.length} audio...`, 'info');
+
+    setIsProcessingAll(true);
+    for (const item of updatedQueue) {
+      await processItemById(item.id, updatedQueue);
+    }
+    setIsProcessingAll(false);
+    showNotification('Semua audio di antrean berhasil diperbarui dan diproses ulang!', 'success');
   };
 
-  // Update a single item's settings
+  // Update a single item's settings (marks it as custom-overridden)
   const handleUpdateItemSettings = (id: string, newSettings: AudioSettings) => {
     setQueue((prev) =>
       prev.map((q) =>
@@ -363,17 +422,41 @@ export default function App() {
           ? {
               ...q,
               settings: newSettings,
+              hasCustomSettings: true,
+              needsReProcess: q.status === 'ready',
               outputFileName: generateOutputName(
                 q.originalFileName,
                 newSettings,
                 newSettings.outputFormat,
                 folderConfig
               ),
-              status: q.status === 'ready' ? 'idle' : q.status,
             }
           : q
       )
     );
+  };
+
+  // Reset a single item's settings back to master settings
+  const handleResetItemSettings = (id: string) => {
+    setQueue((prev) =>
+      prev.map((q) =>
+        q.id === id
+          ? {
+              ...q,
+              settings: { ...settings },
+              hasCustomSettings: false,
+              needsReProcess: q.status === 'ready',
+              outputFileName: generateOutputName(
+                q.originalFileName,
+                settings,
+                settings.outputFormat,
+                folderConfig
+              ),
+            }
+          : q
+      )
+    );
+    showNotification('Pengaturan track berhasil disinkronkan kembali dengan Master Setting', 'info');
   };
 
   // Delete item from queue
@@ -430,7 +513,7 @@ export default function App() {
     if (selectedDirectoryHandle) {
       try {
         let targetDir = selectedDirectoryHandle;
-        const subfolderName = (folderConfig.folderName || 'Roblox_Audio_Output').trim();
+        const subfolderName = (folderConfig.folderName || 'Roblox Audio Output').trim();
         if (subfolderName) {
           targetDir = await selectedDirectoryHandle.getDirectoryHandle(subfolderName, { create: true });
         }
@@ -468,7 +551,7 @@ export default function App() {
     }
 
     setIsDownloadingZip(true);
-    const folderName = (folderConfig.folderName || 'Roblox_Audio_Output').trim();
+    const folderName = (folderConfig.folderName || 'Roblox Audio Output').trim();
     showNotification(
       `Mengompres ${readyItems.length} audio ke dalam folder "${folderName}" di ZIP...`,
       'info'
@@ -646,7 +729,7 @@ Dibuat dengan BindStudio Audio Editor.
           <RobloxFormulaCard
             activeSpeedUp={settings.speedUp}
             onSelectPreset={(preset: RobloxSpeedPreset) => {
-              setSettings((prev) => ({
+              handleUpdateMasterSettings((prev) => ({
                 ...prev,
                 speedUp: preset.speedUp,
                 robloxPlaybackSpeed: preset.robloxPlaybackSpeed,
@@ -658,7 +741,7 @@ Dibuat dengan BindStudio Audio Editor.
             }}
             onCustomSpeedChange={(speedUp: number) => {
               const robloxVal = parseFloat((1 / Math.max(0.01, speedUp)).toFixed(4));
-              setSettings((prev) => ({
+              handleUpdateMasterSettings((prev) => ({
                 ...prev,
                 speedUp,
                 robloxPlaybackSpeed: robloxVal,
@@ -677,12 +760,20 @@ Dibuat dengan BindStudio Audio Editor.
         {/* Global Controls: Playback Speed, Amplify, Reverb Filters, Fades */}
         <GlobalControls
           settings={settings}
-          onChangeSettings={setSettings}
+          onChangeSettings={handleUpdateMasterSettings}
           onApplyToAllQueue={handleApplyToAllQueue}
           onProcessAll={handleProcessAll}
           isProcessing={isProcessingAll}
           queueCount={queue.length}
         />
+
+        {/* Live Audition / Preview Remaster & DSP Settings BEFORE processing */}
+        {queue.length > 0 && (
+          <LivePreviewPlayer
+            queue={queue}
+            settings={settings}
+          />
+        )}
 
         {/* Output Folder & Clean File Naming Settings */}
         <FolderAndNamingSettings
@@ -707,6 +798,7 @@ Dibuat dengan BindStudio Audio Editor.
           activePlayingType={activePlayingType}
           onTogglePlay={handleTogglePlay}
           onUpdateItemSettings={handleUpdateItemSettings}
+          onResetItemSettings={handleResetItemSettings}
         />
       </main>
 

@@ -20,7 +20,8 @@ async function startServer() {
     express.raw({ type: ["audio/*", "application/octet-stream"], limit: "150mb" }),
     (req, res) => {
       const targetFormat = (req.query.format as string) || "ogg";
-      const quality = (req.query.quality as string) || "5"; // libvorbis -q:a 5 is ~160kbps, clear & light
+      const quality = (req.query.quality as string) || "7"; // libvorbis quality (0-10)
+      const bitrate = (req.query.bitrate as string) || ""; // e.g. "224k", "192k", "256k", "320k"
 
       if (!req.body || (req.body as Buffer).length === 0) {
         return res.status(400).json({ error: "Data audio kosong" });
@@ -35,7 +36,11 @@ async function startServer() {
       ];
 
       if (targetFormat === "ogg") {
-        ffmpegArgs.push("-c:a", "libvorbis", "-q:a", quality, "-f", "ogg", "pipe:1");
+        if (bitrate) {
+          ffmpegArgs.push("-c:a", "libvorbis", "-b:a", bitrate, "-f", "ogg", "pipe:1");
+        } else {
+          ffmpegArgs.push("-c:a", "libvorbis", "-q:a", quality, "-f", "ogg", "pipe:1");
+        }
         res.setHeader("Content-Type", "audio/ogg");
         res.setHeader("Content-Disposition", 'attachment; filename="output.ogg"');
       } else if (targetFormat === "mp3") {

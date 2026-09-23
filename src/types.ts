@@ -65,16 +65,17 @@ export type OutputAudioFormat = 'ogg' | 'wav';
 export type NamingStyle = 'clean' | 'roblox' | 'detailed' | 'original';
 
 export interface FolderConfig {
-  folderName: string; // default e.g. "Roblox_Audio_Output"
-  namingStyle: NamingStyle; // 'clean' = Judul_0.43.ogg, 'roblox' = Judul_Roblox0.43.ogg, 'detailed' = Judul_[...].ogg, 'original' = Judul.ogg
+  folderName: string; // default e.g. "Roblox Audio Output"
+  namingStyle: NamingStyle; // 'clean' = Artis - Judul.ogg, 'roblox' = Artis - Judul (PBS 0.43).ogg, 'detailed' = Artis - Judul (2.33x PBS 0.43).ogg, 'original' = Judul Asli.ogg
   includeEffectsInName: boolean; // whether to append amplify or reverb tags
-  customPrefix: string; // optional prefix e.g. "Roblox_" or empty
+  customPrefix: string; // optional prefix e.g. "RBX" or empty
 }
 
 export interface AudioSettings {
   speedUp: number;
   robloxPlaybackSpeed: number;
   outputFormat: OutputAudioFormat; // default 'ogg' (lightweight) vs 'wav' (lossless)
+  oggQuality: number; // 5 = 160kbps, 7 = 224kbps, 8 = 256kbps, 9 = 320kbps (High-End Studio), 10 = ~500kbps (Max Lossless-grade)
   // 'resample' = Roblox method (increases pitch & speed, so Roblox 0.xx PlaybackSpeed restores original pitch)
   // 'timestretch' = pitch-preserved speedup
   pitchMode: 'resample' | 'timestretch';
@@ -114,5 +115,7 @@ export interface QueueItem {
   processedDuration?: number;
   outputFileName: string;
   thumbnail?: string;
+  hasCustomSettings?: boolean; // true if specifically customized via drawer
+  needsReProcess?: boolean; // true if settings were modified after last process
   createdAt: number;
 }

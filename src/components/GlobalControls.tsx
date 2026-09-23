@@ -12,6 +12,13 @@ import {
   SlidersHorizontal,
   Plus,
   Minus,
+  Sparkles,
+  Radio,
+  AlertTriangle,
+  CheckCircle2,
+  HardDrive,
+  Info,
+  Lock,
 } from 'lucide-react';
 
 interface GlobalControlsProps {
@@ -117,11 +124,10 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
             onClick={onApplyToAllQueue}
             disabled={queueCount === 0 || isProcessing}
             className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 disabled:opacity-40 transition flex items-center gap-1.5 active:scale-95 shadow-sm"
-            title="Terapkan konfigurasi parameter ini ke semua item di antrean"
+            title="Terapkan konfigurasi parameter ini ke semua item di antrean dan langsung proses ulang"
           >
-            <RefreshCw className="w-3.5 h-3.5 text-zinc-400" />
-            <span className="hidden sm:inline">Terapkan ke Semua</span>
-            <span className="sm:hidden">Terapkan Semua</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-zinc-400 ${isProcessing ? 'animate-spin' : ''}`} />
+            <span>Terapkan & Proses Ulang</span>
           </button>
 
           <button
@@ -138,7 +144,7 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
       </div>
 
       {/* Bento Grid: 3 Responsive Columns */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Module 1: Speed-Up & PlaybackSpeed */}
         <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80 flex flex-col justify-between">
           <div>
@@ -255,16 +261,30 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
           </div>
         </div>
 
-        {/* Module 3: Format File Output (OGG vs WAV) */}
+        {/* Module 3: Format File Output & Kontrol Ukuran File Roblox (Limit 20MB) */}
         <div className="p-4 rounded-xl bg-zinc-950/70 border border-zinc-800/80 flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="text-xs font-bold text-white flex items-center gap-2">
                 <FileCheck2 className="w-4 h-4 text-amber-400" />
-                <span>Format Output File</span>
+                <span>Format File & Kontrol Ukuran (Limit 20MB)</span>
               </span>
-              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-                Roblox Compatible
+              <span className={`text-[10px] font-mono font-semibold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                settings.outputFormat === 'ogg'
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                  : 'bg-rose-500/15 text-rose-300 border-rose-500/30 animate-pulse'
+              }`}>
+                {settings.outputFormat === 'ogg' ? (
+                  <>
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Lolos Batas 20MB</span>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3 h-3 text-rose-400" />
+                    <span>Resiko Ditolak Roblox</span>
+                  </>
+                )}
               </span>
             </div>
 
@@ -280,13 +300,15 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                 }`}
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">OGG Vorbis</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300">
-                    Definisi
+                  <span className="text-xs font-bold text-white flex items-center gap-1">
+                    <span>OGG Vorbis</span>
+                    <span className="text-[9px] px-1 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-extrabold">
+                      WAJIB ROBLOX
+                    </span>
                   </span>
                 </div>
                 <div className="text-[10px] text-zinc-400 mt-1">
-                  ~90% lebih hemat. Tembus limit 20MB Roblox!
+                  Ukuran <strong className="text-emerald-400 font-mono">~2.5 - 4 MB</strong>. 100% lolos batas 20MB Roblox & cepat streaming!
                 </div>
               </button>
 
@@ -296,33 +318,130 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                 onClick={() => handleFormatChange('wav')}
                 className={`p-2.5 rounded-xl border text-left transition flex flex-col justify-between ${
                   settings.outputFormat === 'wav'
-                    ? 'bg-blue-500/15 border-blue-500/50 shadow-sm ring-1 ring-blue-500/30'
+                    ? 'bg-rose-500/15 border-rose-500/60 shadow-sm ring-1 ring-rose-500/40'
                     : 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-white'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-white">WAV PCM</span>
-                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300">
-                    Lossless
+                  <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300">
+                    Bengkak 30-50MB
                   </span>
                 </div>
-                <div className="text-[10px] text-zinc-400 mt-1">
-                  Ukuran mentah besar (30-50MB).
+                <div className="text-[10px] text-rose-300/80 mt-1">
+                  Audio mentah uncompressed. <strong>Pasti ditolak Roblox</strong> jika &gt; 20MB.
                 </div>
               </button>
             </div>
+
+            {/* Warning if WAV is currently selected */}
+            {settings.outputFormat === 'wav' && (
+              <div className="mt-2.5 p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-rose-200">
+                      Penyebab Utama File Bengkak Sampai 50MB:
+                    </div>
+                    <div className="text-[11px] text-rose-300/90 mt-1 leading-relaxed">
+                      Format WAV PCM menyimpan audio tanpa kompresi (~10.6 MB per menit). Lagu 4-5 menit akan berukuran <strong>40-52 MB</strong> dan <strong>pasti ditolak sistem upload Roblox (limit 20MB)</strong>!
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleFormatChange('ogg')}
+                      className="mt-2 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-sm"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Ganti ke OGG Vorbis (Aman & Ringan)</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* OGG Quality / Bitrate Selector with 224 kbps clarity explanation */}
+            {settings.outputFormat === 'ogg' && (
+              <div className="mt-3 p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-zinc-300 font-semibold text-[11px] flex items-center gap-1.5">
+                    <HardDrive className="w-3 h-3 text-emerald-400" />
+                    <span>Pilihan Bitrate OGG:</span>
+                  </span>
+                  <span className="font-mono text-emerald-400 font-bold text-[11px]">
+                    {(settings.oggQuality ?? 7) === 7
+                      ? 'q7 • 224 kbps (Standar Emas Roblox)'
+                      : (settings.oggQuality ?? 7) === 6
+                      ? 'q6 • 192 kbps (Hemat Kuota)'
+                      : (settings.oggQuality ?? 7) === 8
+                      ? 'q8 • 256 kbps (Tinggi)'
+                      : (settings.oggQuality ?? 7) === 9
+                      ? 'q9 • 320 kbps (Studio Master)'
+                      : (settings.oggQuality ?? 7) === 5
+                      ? 'q5 • 160 kbps (Spotify Normal)'
+                      : 'q10 • 450 kbps (Max)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { q: 6, label: '192k', desc: 'Hemat Kuota', size: '~2-3MB' },
+                    { q: 7, label: '224k', desc: 'Rekomendasi Emas', size: '~2.5-4MB', isPopular: true },
+                    { q: 8, label: '256k', desc: 'High Quality', size: '~3.5-5MB' },
+                    { q: 9, label: '320k', desc: 'Studio Master', size: '~4.5-6MB' },
+                  ].map((item) => (
+                    <button
+                      key={item.q}
+                      type="button"
+                      onClick={() => onChangeSettings({ ...settings, oggQuality: item.q })}
+                      className={`p-1.5 rounded-lg text-center transition flex flex-col items-center justify-center relative ${
+                        (settings.oggQuality ?? 7) === item.q
+                          ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm'
+                          : 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 hover:text-zinc-200'
+                      }`}
+                    >
+                      {item.isPopular && (
+                        <span className="absolute -top-2 right-1 text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-500 text-zinc-950 shadow-sm">
+                          TOP
+                        </span>
+                      )}
+                      <span className="text-[11px] font-mono font-bold">{item.label}</span>
+                      <span className="text-[9px] text-zinc-400 font-mono mt-0.5">{item.size}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="mt-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px] text-zinc-400">
-            {settings.outputFormat === 'ogg' ? (
-              <span className="text-emerald-300">
-                ✓ Format resmi Roblox Studio untuk audio game ringan & cepat streaming.
+          {/* Realtime Size & Roblox Limit Safety Estimation */}
+          <div className="mt-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px]">
+            <div className="flex items-center justify-between text-zinc-300">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Estimasi File Lagu 3–4 Menit ({settings.speedUp}x):</span>
               </span>
-            ) : (
-              <span className="text-amber-300">
-                ⚠ Perhatian: File WAV berdurasi panjang dapat melampaui limit 20MB Roblox.
+              <span className="font-mono font-bold text-white">
+                {settings.outputFormat === 'ogg'
+                  ? (settings.oggQuality ?? 7) === 6
+                    ? '~2.1 MB'
+                    : (settings.oggQuality ?? 7) === 7
+                    ? '~2.6 MB'
+                    : (settings.oggQuality ?? 7) === 8
+                    ? '~3.2 MB'
+                    : '~3.9 MB'
+                  : '~32.0 MB (OVER 20MB)'}
               </span>
-            )}
+            </div>
+            <div className="mt-1 text-[10px] text-zinc-400">
+              {settings.outputFormat === 'ogg' ? (
+                <span className="text-emerald-400 font-medium">
+                  ✓ Aman terkontrol: Menggunakan ~13% dari batas kuota 20MB Roblox.
+                </span>
+              ) : (
+                <span className="text-rose-400 font-bold">
+                  ❌ Melebihi kuota: 160% dari batas 20MB Roblox (Pasti Gagal Upload).
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>

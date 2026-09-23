@@ -1,4 +1,4 @@
-import { AudioSettings, FolderConfig, NamingStyle, OutputAudioFormat, ReverbType } from '../types';
+import { AudioSettings, FolderConfig, NamingStyle, OutputAudioFormat, ReverbType, RemasterProfile } from '../types';
 
 let sharedAudioCtx: AudioContext | null = null;
 
@@ -33,7 +33,7 @@ export async function decodeAudioFile(fileOrBlob: Blob | File | ArrayBuffer): Pr
  * Generate a synthetic Impulse Response for Convolution Reverb
  * with acoustic damping and speedUp-aware decay scaling
  */
-function createReverbImpulse(
+export function createReverbImpulse(
   ctx: BaseAudioContext,
   reverbType: ReverbType,
   decaySeconds: number,
@@ -92,34 +92,6 @@ function createReverbImpulse(
   }
 
   return impulse;
-}
-
-/**
- * Transparent soft-saturation curve for WaveShaperNode.
- * Allows true loudness amplification (+3dB, +6dB, +12dB) while softly rounding off peaks
- * to prevent harsh digital clipping, without the squashing effect of a brickwall compressor.
- */
-function createSoftSaturationNode(ctx: BaseAudioContext): WaveShaperNode {
-  const shaper = ctx.createWaveShaper();
-  const nSamples = 65536;
-  const curve = new Float32Array(nSamples);
-
-  for (let i = 0; i < nSamples; i++) {
-    const x = (i / (nSamples / 2)) - 1; // -1 to +1
-    // Linear / 100% transparent for normal amplitudes up to 0.75
-    if (Math.abs(x) <= 0.75) {
-      curve[i] = x;
-    } else {
-      // Smooth hyperbolic tangent saturation curve softly rounding off peaks up to 0.99
-      const sign = Math.sign(x);
-      const excess = Math.abs(x) - 0.75;
-      curve[i] = sign * (0.75 + 0.24 * Math.tanh(excess * 2.5));
-    }
-  }
-
-  shaper.curve = curve;
-  shaper.oversample = '2x';
-  return shaper;
 }
 
 /**
@@ -216,7 +188,9 @@ export async function processAudio(
   }
 
   // 2. Gain / Amplify node
-  // Direct mathematical decibel gain: +6dB ≈ 2x amplitude, -6dB ≈ 0.5x amplitude
+  // Direct mathematical decibel gain: linearGain = 10^(dB / 20)
+  // +3 dB  => 1.41x, +6 dB => 2.00x, +12 dB => 3.98x
+  // -6 dB  => 0.50x, -12 dB => 0.25x
   const gainNode = offlineCtx.createGain();
   const linearGain = Math.pow(10, settings.amplifyDb / 20);
   gainNode.gain.value = linearGain;
@@ -240,9 +214,8 @@ export async function processAudio(
     dryGain = offlineCtx.createGain();
 
     const wetAmount = Math.min(Math.max(settings.reverbMix, 0), 1);
-    // Balance dry/wet so reverb is audible and clearly atmospheric
-    wetGain.gain.value = wetAmount * 1.5;
-    dryGain.gain.value = Math.max(0.15, 1 - wetAmount * 0.45);
+    wetGain.gain.value = wetAmount * 0.75;
+    dryGain.gain.value = 1.0; // Maintain 100% full dry volume so audio does not drop in loudness
 
     source.connect(gainNode);
 
@@ -250,74 +223,94 @@ export async function processAudio(
     gainNode.connect(dryGain);
     gainNode.connect(convolver);
     convolver.connect(wetGain);
+
+    dryGain.connect(offlineCtx.destination);
+    wetGain.connect(offlineCtx.destination);
   } else {
     source.connect(gainNode);
-  }
-
-  // 4. Fade In & Fade Out Automation
-  const fadeGainNode = offlineCtx.createGain();
-  const effFadeInSec = settings.fadeInEnabled && settings.fadeInDuration > 0
-    ? Math.min(settings.fadeInDuration / speedUpFactor, totalDuration / 2)
-    : 0;
-  const effFadeOutSec = settings.fadeOutEnabled && settings.fadeOutDuration > 0
-    ? Math.min(settings.fadeOutDuration / speedUpFactor, totalDuration / 2)
-    : 0;
-
-  // Apply Fade In ramp from 0 to 1
-  if (effFadeInSec > 0.001) {
-    fadeGainNode.gain.setValueAtTime(0.0001, 0);
-    fadeGainNode.gain.linearRampToValueAtTime(1.0, effFadeInSec);
-  } else {
-    fadeGainNode.gain.setValueAtTime(1.0, 0);
-  }
-
-  // Apply Fade Out ramp from 1 to 0 at the end of audio
-  if (effFadeOutSec > 0.001) {
-    const fadeOutStart = Math.max(effFadeInSec, totalDuration - effFadeOutSec);
-    fadeGainNode.gain.setValueAtTime(1.0, fadeOutStart);
-    fadeGainNode.gain.linearRampToValueAtTime(0.0001, totalDuration);
-  }
-
-  // Connect wet/dry or direct gain into fadeGainNode
-  if (wetGain && dryGain) {
-    wetGain.connect(fadeGainNode);
-    dryGain.connect(fadeGainNode);
-  } else {
-    gainNode.connect(fadeGainNode);
-  }
-
-  // 5. Output Stage & Anti-Clipping Protection
-  // If preserveQuality is enabled, use musical soft-saturation (tanh curve) to prevent
-  // digital wrap-around clipping while FULLY ALLOWING amplified loudness (+3dB to +18dB)
-  // without any squashing compressor pumping.
-  if (settings.preserveQuality) {
-    const saturator = createSoftSaturationNode(offlineCtx);
-    fadeGainNode.connect(saturator);
-    saturator.connect(offlineCtx.destination);
-  } else {
-    fadeGainNode.connect(offlineCtx.destination);
+    gainNode.connect(offlineCtx.destination);
   }
 
   onProgress?.(50);
   source.start(0);
 
   const renderedBuffer = await offlineCtx.startRendering();
+  onProgress?.(75);
+
+  const numChannels = renderedBuffer.numberOfChannels;
+  const totalSamples = renderedBuffer.length;
+
+  // 4. Sample-Level Anti-Clipping Soft Limiter for Amplified Volume (+dB)
+  // Allows true high loudness without digital wrap-around cracking or harsh square waves
+  if (settings.amplifyDb > 0) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = renderedBuffer.getChannelData(ch);
+      for (let i = 0; i < totalSamples; i++) {
+        const s = channelData[i];
+        if (s > 0.95) {
+          const excess = s - 0.95;
+          channelData[i] = 0.95 + 0.048 * Math.tanh(excess * 1.5);
+        } else if (s < -0.95) {
+          const excess = -s - 0.95;
+          channelData[i] = -(0.95 + 0.048 * Math.tanh(excess * 1.5));
+        }
+      }
+    }
+  }
+
+  // 5. Sample-Level Fade In (Guaranteed 100% applied from true 0.0 silence to 1.0 volume)
+  if (settings.fadeInEnabled && settings.fadeInDuration > 0) {
+    const fadeInSec = Math.min(settings.fadeInDuration, renderedBuffer.duration / 2);
+    const fadeInSamples = Math.floor(fadeInSec * sampleRate);
+    if (fadeInSamples > 0) {
+      for (let ch = 0; ch < numChannels; ch++) {
+        const channelData = renderedBuffer.getChannelData(ch);
+        for (let i = 0; i < fadeInSamples; i++) {
+          // Half-cosine smooth fade curve (starts at 0.0, curves smoothly up to 1.0)
+          const factor = 0.5 * (1 - Math.cos((i / fadeInSamples) * Math.PI));
+          channelData[i] *= factor;
+        }
+      }
+    }
+  }
+
+  // 6. Sample-Level Fade Out (Guaranteed 100% applied from 1.0 volume to true 0.0 silence at the end)
+  if (settings.fadeOutEnabled && settings.fadeOutDuration > 0) {
+    const fadeOutSec = Math.min(settings.fadeOutDuration, renderedBuffer.duration / 2);
+    const fadeOutSamples = Math.floor(fadeOutSec * sampleRate);
+    if (fadeOutSamples > 0) {
+      const startSample = totalSamples - fadeOutSamples;
+      for (let ch = 0; ch < numChannels; ch++) {
+        const channelData = renderedBuffer.getChannelData(ch);
+        for (let i = 0; i < fadeOutSamples; i++) {
+          // Half-cosine smooth fade curve (starts at 1.0, curves smoothly down to 0.0)
+          const factor = 0.5 * (1 + Math.cos((i / fadeOutSamples) * Math.PI));
+          channelData[startSample + i] *= factor;
+        }
+      }
+    }
+  }
+
   onProgress?.(85);
 
-  // Encode to 16-bit PCM WAV
+  // Encode to 16-bit PCM WAV (intermediate rendered audio)
   const wavBlob = audioBufferToWav(renderedBuffer);
-  onProgress?.(85);
+  onProgress?.(88);
 
   let oggBlob: Blob | undefined;
   let mainBlob = wavBlob;
 
   if (settings.outputFormat === 'ogg') {
     try {
-      oggBlob = await convertWavToOgg(wavBlob);
+      oggBlob = await convertWavToOgg(wavBlob, settings.oggQuality ?? 7);
       mainBlob = oggBlob;
     } catch (e) {
-      console.warn('Fallback ke WAV karena konversi OGG gagal:', e);
-      mainBlob = wavBlob;
+      console.error('Konversi OGG gagal:', e);
+      // Do not silently deliver a 50MB uncompressed WAV pretending to be OGG!
+      // This protects users from Roblox 20MB upload rejection.
+      throw new Error(
+        `Gagal mengonversi ke OGG Vorbis: ${(e as Error).message}. File WAV mentah (${formatFileSize(wavBlob.size)}) akan melebihi batas 20MB Roblox!`
+      );
     }
   }
 
@@ -327,10 +320,93 @@ export async function processAudio(
 }
 
 /**
- * Convert WAV Blob to OGG Vorbis via server FFmpeg
+ * Roblox Strict Upload Limit Constants
  */
-export async function convertWavToOgg(wavBlob: Blob): Promise<Blob> {
-  const res = await fetch('/api/audio/convert?format=ogg&quality=5', {
+export const ROBLOX_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // Strictly 20 MB
+
+/**
+ * Map quality number to explicit Vorbis bitrate string
+ */
+export function getBitrateString(quality: number = 7): string {
+  switch (quality) {
+    case 5:
+      return '160k';
+    case 6:
+      return '192k';
+    case 7:
+      return '224k'; // Roblox Gold Standard
+    case 8:
+      return '256k';
+    case 9:
+      return '320k';
+    case 10:
+      return '450k';
+    default:
+      return '224k';
+  }
+}
+
+/**
+ * Estimate output file size in bytes based on duration, speedup, format and quality
+ */
+export function estimateAudioFileSize(
+  durationSeconds: number,
+  speedUp: number = 2.326,
+  format: OutputAudioFormat = 'ogg',
+  quality: number = 7
+): number {
+  const effectiveSec = Math.max(1, durationSeconds / Math.max(0.1, speedUp));
+  if (format === 'wav') {
+    // 44100 Hz, 16-bit (2 bytes), stereo (2 channels) = 176,400 bytes/sec
+    return Math.round(effectiveSec * 176400) + 44;
+  }
+  // OGG Vorbis estimation
+  const kbpsMap: Record<number, number> = { 5: 160, 6: 192, 7: 224, 8: 256, 9: 320, 10: 450 };
+  const kbps = kbpsMap[quality] || 224;
+  const bytesPerSec = (kbps * 1000) / 8;
+  return Math.round(effectiveSec * bytesPerSec) + 4096; // Vorbis page headers
+}
+
+/**
+ * Get Roblox upload compliance status for any given file size
+ */
+export function getRobloxSafetyStatus(sizeBytes: number): {
+  isSafe: boolean;
+  isNearLimit: boolean;
+  percent: number;
+  label: string;
+} {
+  const percent = Math.round((sizeBytes / ROBLOX_MAX_FILE_SIZE_BYTES) * 100);
+  if (sizeBytes > ROBLOX_MAX_FILE_SIZE_BYTES) {
+    return {
+      isSafe: false,
+      isNearLimit: false,
+      percent,
+      label: `Melebihi Batas 20MB (${(sizeBytes / (1024 * 1024)).toFixed(1)} MB - Ditolak Roblox!)`,
+    };
+  }
+  if (sizeBytes > 18 * 1024 * 1024) {
+    return {
+      isSafe: true,
+      isNearLimit: true,
+      percent,
+      label: `Mendekati Batas 20MB (${(sizeBytes / (1024 * 1024)).toFixed(1)} MB / 20 MB • ${percent}%)`,
+    };
+  }
+  return {
+    isSafe: true,
+    isNearLimit: false,
+    percent,
+    label: `Aman Roblox (${(sizeBytes / (1024 * 1024)).toFixed(1)} MB / 20 MB • ${percent}%)`,
+  };
+}
+
+/**
+ * Convert WAV Blob to OGG Vorbis via server FFmpeg with specific bitrate (default 224kbps)
+ */
+export async function convertWavToOgg(wavBlob: Blob, quality: number = 7): Promise<Blob> {
+  const bitrateStr = getBitrateString(quality);
+  const res = await fetch(`/api/audio/convert?format=ogg&quality=${encodeURIComponent(quality)}&bitrate=${encodeURIComponent(bitrateStr)}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'audio/wav',
@@ -343,7 +419,12 @@ export async function convertWavToOgg(wavBlob: Blob): Promise<Blob> {
     throw new Error(err.error || `Gagal konversi ke OGG (Status ${res.status})`);
   }
 
-  return await res.blob();
+  const resultBlob = await res.blob();
+  if (resultBlob.size === 0) {
+    throw new Error('Hasil konversi OGG kosong');
+  }
+
+  return resultBlob;
 }
 
 /**
@@ -443,29 +524,41 @@ export function formatFileSize(bytes: number): string {
 
 /**
  * Sanitize and clean up raw file names:
- * Strips unnecessary file extensions (.mp3, .wav, .m4a, .ogg) from the title,
- * removes clutter such as YouTube noise tags like "[Official Video]" or "(Lyrics)",
- * and removes illegal filesystem characters.
+ * - Strips unnecessary file extensions (.mp3, .wav, .m4a, .ogg, etc.)
+ * - Removes clutter such as YouTube tags like "[Official Video]" or "(Lyrics)"
+ * - Removes unwanted underscores '_' and replaces with clean readable spaces
+ * - Preserves artist and song name naturally (e.g. "Alan Walker - Faded")
+ * - Removes illegal filesystem characters
  */
 export function sanitizeBaseName(rawName: string): string {
   let clean = rawName
     // Remove all trailing extensions (.mp3, .wav, .ogg, .m4a, .webm, etc.)
-    .replace(/\.(mp3|wav|ogg|m4a|webm|flac|aac)$/i, '')
-    // Remove bracketed YouTube noise like [Official Video], (Audio), [HD], etc.
-    .replace(/\[(official|video|audio|lyrics|hd|4k|hq|remastered|mv)[^\]]*\]/gi, '')
-    .replace(/\((official|video|audio|lyrics|hd|4k|hq|remastered|mv)[^)]*\)/gi, '')
-    // Replace dangerous filesystem characters with clean underscores
-    .replace(/[<>:"/\\|?*]/g, '_')
-    // Collapse multiple underscores/spaces
-    .replace(/[\s_]+/g, '_')
+    .replace(/\.(mp3|wav|ogg|m4a|webm|flac|aac|opus)$/gi, '')
+    // Remove bracketed YouTube noise like [Official Video], (Audio), [HD], [Lyrics], etc.
+    .replace(/\[(official|video|audio|lyrics|hd|4k|hq|remastered|mv|clip|music video|visualizer)[^\]]*\]/gi, '')
+    .replace(/\((official|video|audio|lyrics|hd|4k|hq|remastered|mv|clip|music video|visualizer)[^)]*\)/gi, '')
+    // Remove track number prefixes like "01. ", "01 - ", "01 "
+    .replace(/^\d{1,3}[\s.\-_]+/, '')
+    // Strip previous speed tags if file was already processed before (e.g. _0.43 or (PBS 0.43))
+    .replace(/[\s\-_]+(0\.\d{1,4}|roblox[\d.]*)$/gi, '')
+    // Replace underscores with clean normal spaces
+    .replace(/_/g, ' ')
+    // Replace dangerous filesystem characters with clean space
+    .replace(/[<>:"/\\|?*]/g, ' ')
+    // Normalize dashes and spaces between Artist - Title
+    .replace(/\s*-\s*/g, ' - ')
+    // Collapse multiple consecutive spaces
+    .replace(/\s+/g, ' ')
     .trim()
-    .replace(/^_+|_+$/g, '');
+    .replace(/^[\s\-.]+|[\s\-.]+$/g, '');
 
-  return clean || 'Audio_Roblox';
+  return clean || 'Audio Roblox';
 }
 
 /**
- * Generate output file name with neat, tidy formatting options
+ * Generate output file name with clean, readable, Roblox-friendly formatting.
+ * Avoids raw numeric suffixes like "_0.43.ogg" that trigger Roblox Asset Manager
+ * to rename files to just "43".
  */
 export function generateOutputName(
   originalFileName: string,
@@ -476,51 +569,57 @@ export function generateOutputName(
   const cleanBase = sanitizeBaseName(originalFileName);
   const ext = forcedFormat || settings.outputFormat || 'ogg';
   const style: NamingStyle = folderConfig?.namingStyle || 'clean';
-  const prefix = folderConfig?.customPrefix && folderConfig.customPrefix.trim() !== ''
-    ? `${folderConfig.customPrefix.trim()}_`
-    : '';
+  
+  let prefix = '';
+  if (folderConfig?.customPrefix && folderConfig.customPrefix.trim() !== '') {
+    const trimmed = folderConfig.customPrefix.trim().replace(/_/g, ' ');
+    prefix = /[\s\-]$/.test(trimmed) ? `${trimmed} ` : `${trimmed} - `;
+  }
 
-  // Optional effect suffix if requested by user
+  // Optional effect suffix if requested by user (human-readable, no underscores)
   const effectParts: string[] = [];
   if (folderConfig?.includeEffectsInName) {
     if (settings.amplifyDb !== 0) {
       effectParts.push(`${settings.amplifyDb > 0 ? '+' : ''}${settings.amplifyDb}dB`);
     }
     if (settings.reverbType !== 'none') {
-      effectParts.push(`rev-${settings.reverbType}`);
+      effectParts.push(`Reverb ${settings.reverbType}`);
+    }
+    if (settings.remasterProfile && settings.remasterProfile !== 'none') {
+      const remasterNames: Record<string, string> = {
+        clarity: 'Studio Master',
+        bass_punch: 'Bass Punch',
+        vocal_air: 'Vocal Air',
+        loudness_war: 'Max Loudness',
+      };
+      effectParts.push(`Remaster ${remasterNames[settings.remasterProfile] || settings.remasterProfile}`);
     }
     if (settings.fadeInEnabled) {
-      effectParts.push(`fi${settings.fadeInDuration}s`);
+      effectParts.push(`FadeIn ${settings.fadeInDuration}s`);
     }
     if (settings.fadeOutEnabled) {
-      effectParts.push(`fo${settings.fadeOutDuration}s`);
+      effectParts.push(`FadeOut ${settings.fadeOutDuration}s`);
     }
   }
-  const effectSuffix = effectParts.length > 0 ? `_${effectParts.join('_')}` : '';
+  const effectSuffix = effectParts.length > 0 ? ` (${effectParts.join(', ')})` : '';
 
   switch (style) {
     case 'clean':
-      // Very clean & compact: e.g. "SongTitle_0.43.ogg" (Directly shows Roblox PlaybackSpeed)
-      return `${prefix}${cleanBase}_${settings.robloxPlaybackSpeed}${effectSuffix}.${ext}`;
-
-    case 'roblox':
-      // Clear Roblox Studio tag: e.g. "SongTitle_Roblox0.43.ogg"
-      return `${prefix}${cleanBase}_Roblox${settings.robloxPlaybackSpeed}${effectSuffix}.${ext}`;
-
-    case 'original':
-      // Minimalist original title: e.g. "SongTitle.ogg"
+      // Standar Roblox yang bersih: "Artis - Lagu.ogg"
+      // Tanpa tanda underscore, tanpa simbol aneh, tidak akan di-rename jadi 43 oleh Roblox
       return `${prefix}${cleanBase}${effectSuffix}.${ext}`;
 
+    case 'roblox':
+      // Dengan PlaybackSpeed yang rapi dalam kurung: "Artis - Lagu (PBS 0.43).ogg"
+      return `${prefix}${cleanBase} (PBS ${settings.robloxPlaybackSpeed})${effectSuffix}.${ext}`;
+
     case 'detailed':
-    default: {
-      // Detailed format with full tags
-      const speedTag = `speed${settings.speedUp}x`;
-      const robloxTag = `roblox${settings.robloxPlaybackSpeed}`;
-      const ampTag = settings.amplifyDb === 0 ? 'amp0dB' : `amp${settings.amplifyDb > 0 ? '+' : ''}${settings.amplifyDb}dB`;
-      const revTag = settings.reverbType !== 'none' ? `_rev-${settings.reverbType}` : '';
-      const fadeTag = (settings.fadeInEnabled ? `_fi${settings.fadeInDuration}s` : '') +
-                      (settings.fadeOutEnabled ? `_fo${settings.fadeOutDuration}s` : '');
-      return `${prefix}${cleanBase}_[${speedTag}_${robloxTag}_${ampTag}${revTag}${fadeTag}].${ext}`;
-    }
+      // Detail lengkap yang tetap terbaca: "Artis - Lagu (2.33x PBS 0.43).ogg"
+      return `${prefix}${cleanBase} (${settings.speedUp}x PBS ${settings.robloxPlaybackSpeed})${effectSuffix}.${ext}`;
+
+    case 'original':
+    default:
+      // Judul asli tanpa modifikasi apapun selain pembersihan karakter berbahaya
+      return `${prefix}${cleanBase}${effectSuffix}.${ext}`;
   }
 }

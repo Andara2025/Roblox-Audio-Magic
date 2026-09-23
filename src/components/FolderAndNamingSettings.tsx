@@ -21,16 +21,16 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
   onRequestSelectFolder,
 }) => {
   const namingStyles: { id: NamingStyle; label: string; example: string }[] = [
-    { id: 'clean', label: 'Bersih & PlaybackSpeed', example: 'Lagu_0.43.ogg' },
-    { id: 'roblox', label: 'Roblox Tagged', example: 'Lagu_Roblox0.43.ogg' },
-    { id: 'detailed', label: 'Detail Lengkap (DSP)', example: 'Lagu_[2.33x_PBS0.43].ogg' },
-    { id: 'original', label: 'Nama Asli File', example: 'Lagu.ogg' },
+    { id: 'clean', label: 'Artis & Lagu (Standar Roblox)', example: 'Alan Walker - Faded.ogg' },
+    { id: 'roblox', label: 'Dengan Info PlaybackSpeed', example: 'Alan Walker - Faded (PBS 0.43).ogg' },
+    { id: 'detailed', label: 'Detail Kecepatan & PBS', example: 'Alan Walker - Faded (2.33x PBS 0.43).ogg' },
+    { id: 'original', label: 'Judul Asli Bersih', example: 'Alan Walker - Faded.ogg' },
   ];
 
   const handleFolderNameChange = (folderName: string) => {
     onChangeConfig({
       ...config,
-      folderName: folderName.replace(/[/\\?%*:|"<>]/g, '_') || 'Roblox_Audio_Output',
+      folderName: folderName.replace(/[/\\?%*:|"<>]/g, ' ') || 'Roblox Audio Output',
     });
   };
 
@@ -100,7 +100,7 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
               type="text"
               value={config.folderName}
               onChange={(e) => handleFolderNameChange(e.target.value)}
-              placeholder="Contoh: Roblox_Audio_Output"
+              placeholder="Contoh: Roblox Audio Output"
               className="w-full bg-zinc-950 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 font-mono"
             />
             <p className="text-[11px] text-zinc-500 mt-1">
@@ -121,7 +121,7 @@ export const FolderAndNamingSettings: React.FC<FolderAndNamingSettingsProps> = (
               type="text"
               value={config.customPrefix}
               onChange={(e) => onChangeConfig({ ...config, customPrefix: e.target.value })}
-              placeholder="Contoh: RBX_ atau Sound_"
+              placeholder="Contoh: RBX atau Lagu"
               className="w-full bg-zinc-950 border border-zinc-700/80 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-red-500 font-mono"
             />
           </div>

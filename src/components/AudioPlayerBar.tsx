@@ -12,7 +12,7 @@ import {
   Disc3,
   Sliders,
 } from 'lucide-react';
-import { formatDuration } from '../utils/audioEngine';
+import { formatDuration, formatFileSize } from '../utils/audioEngine';
 
 interface AudioPlayerBarProps {
   item: QueueItem;
@@ -58,6 +58,11 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     let url: string | null = null;
     let cleanupNeeded = false;
 
+    // Save previous progress ratio or time to seamlessly continue listening
+    const prevTime = audioRef.current?.currentTime || 0;
+    const prevDuration = audioRef.current?.duration || 0;
+    const progressRatio = prevDuration > 0 ? prevTime / prevDuration : 0;
+
     if (type === 'processed' && item.processedBlob) {
       url = URL.createObjectURL(item.processedBlob);
       cleanupNeeded = true;
@@ -71,7 +76,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     }
 
     setAudioUrl(url);
-    setCurrentTime(0);
 
     return () => {
       if (cleanupNeeded && url) {
@@ -80,10 +84,9 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
     };
   }, [item, type]);
 
-  // Handle play/pause on source ready
+  // Handle play/pause on source ready, maintaining seek position if switching A/B
   useEffect(() => {
     if (audioRef.current && audioUrl) {
-      audioRef.current.currentTime = 0;
       audioRef.current
         .play()
         .then(() => {
@@ -200,43 +203,98 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                 {type === 'processed' ? (
                   <span>
                     Speed: <strong className="text-white">{item.settings.speedUp}x</strong> | Roblox:{' '}
-                    <strong className="text-red-400">{item.settings.robloxPlaybackSpeed}</strong> | Gain:{' '}
+                    <strong className="text-red-400">{item.settings.robloxPlaybackSpeed}</strong> | Format:{' '}
+                    <strong className="text-teal-400">
+                      {item.settings.outputFormat === 'ogg'
+                        ? `OGG ${item.settings.oggQuality === 10 ? '500k' : item.settings.oggQuality === 9 ? '320k' : item.settings.oggQuality === 8 ? '256k' : item.settings.oggQuality === 7 ? '224k' : '160k'}`
+                        : 'WAV'}
+                    </strong> | Gain:{' '}
                     <strong className="text-emerald-400">
                       {item.settings.amplifyDb > 0
                         ? `+${item.settings.amplifyDb}`
                         : item.settings.amplifyDb}
                       dB
                     </strong>
+                    {item.settings.fadeInEnabled && (
+                      <span className="ml-1 text-indigo-300">
+                        | FadeIn: {item.settings.fadeInDuration}s
+                      </span>
+                    )}
+                    {item.settings.fadeOutEnabled && (
+                      <span className="ml-1 text-indigo-300">
+                        | FadeOut: {item.settings.fadeOutDuration}s
+                      </span>
+                    )}
                     {item.settings.reverbType !== 'none' && (
                       <span className="ml-1 text-cyan-300 capitalize">
                         | Reverb: {item.settings.reverbType}
                       </span>
                     )}
+                    {item.settings.remasterProfile && item.settings.remasterProfile !== 'none' && (
+                      <span className="ml-1 text-amber-300 font-semibold">
+                        | Remaster: {item.settings.remasterProfile === 'clarity'
+                          ? 'Studio Master'
+                          : item.settings.remasterProfile === 'bass_punch'
+                          ? 'Bass Punch'
+                          : item.settings.remasterProfile === 'vocal_air'
+                          ? 'Vocal Air'
+                          : 'Max Loudness'}
+                      </span>
+                    )}
+                    {item.processedSize && (
+                      <span className="ml-1 font-mono">
+                        | Size:{' '}
+                        <span className={item.processedSize > 20 * 1024 * 1024 ? 'text-rose-400 font-extrabold' : 'text-emerald-400 font-bold'}>
+                          {formatFileSize(item.processedSize)} {item.processedSize > 20 * 1024 * 1024 ? '(⚠️ Melebihi 20MB)' : '(✓ Lolos Roblox)'}
+                        </span>
+                      </span>
+                    )}
                   </span>
                 ) : (
-                  <span>Audio Mentah Input</span>
+                  <span>
+                    Audio Mentah Input | Size: <span className="font-mono text-zinc-300">{formatFileSize(item.fileSize)}</span>
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* Quick A/B Switch and Roblox Simulation button */}
+            {/* Quick A/B Switch (Sebelum vs Sesudah Remaster) and Roblox Simulation button */}
             {item.status === 'ready' && (
-              <div className="hidden sm:flex items-center gap-1.5 shrink-0 ml-2">
-                <button
-                  type="button"
-                  onClick={() => onToggleType(type === 'processed' ? 'original' : 'processed')}
-                  className="px-2.5 py-1.5 rounded-lg text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition flex items-center gap-1.5 active:scale-95"
-                  title="Bandingkan langsung audio Asli vs Hasil"
-                >
-                  <Repeat className="w-3.5 h-3.5 text-red-400" />
-                  <span>Dengar {type === 'processed' ? 'Asli' : 'Hasil'}</span>
-                </button>
+              <div className="flex items-center gap-1.5 shrink-0 ml-1 sm:ml-2">
+                {/* Dedicated Before/After Segmented Toggle */}
+                <div className="flex items-center p-0.5 rounded-lg bg-zinc-900 border border-zinc-700/80">
+                  <button
+                    type="button"
+                    onClick={() => onToggleType('original')}
+                    className={`px-2 py-1 rounded-md text-xs font-semibold transition flex items-center gap-1 ${
+                      type === 'original'
+                        ? 'bg-cyan-500 text-zinc-950 font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title="Dengar audio asli (Sebelum Remaster)"
+                  >
+                    <span>Sebelum</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onToggleType('processed')}
+                    className={`px-2 py-1 rounded-md text-xs font-semibold transition flex items-center gap-1 ${
+                      type === 'processed'
+                        ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white font-bold shadow-sm'
+                        : 'text-zinc-400 hover:text-zinc-200'
+                    }`}
+                    title="Dengar audio hasil (Sesudah Remaster & Efek)"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-300" />
+                    <span>Sesudah</span>
+                  </button>
+                </div>
 
                 {type === 'processed' && (
                   <button
                     type="button"
                     onClick={() => setIsRobloxSimulated(!isRobloxSimulated)}
-                    className={`px-2.5 py-1.5 rounded-lg text-xs border transition flex items-center gap-1.5 active:scale-95 ${
+                    className={`px-2.5 py-1 rounded-lg text-xs border transition flex items-center gap-1.5 active:scale-95 ${
                       isRobloxSimulated
                         ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold shadow-md shadow-amber-500/20'
                         : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
@@ -244,7 +302,8 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                     title="Simulasikan suara persis saat diputar di Roblox Studio dengan PlaybackSpeed (nada normal)"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Mode Roblox</span>
+                    <span className="hidden sm:inline">Simulasi Roblox (Normal)</span>
+                    <span className="sm:hidden">Roblox</span>
                   </button>
                 )}
               </div>

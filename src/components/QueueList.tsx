@@ -8,6 +8,8 @@ import {
   RotateCcw,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
+  ShieldCheck,
   Clock,
   HardDrive,
   FileAudio,
@@ -38,6 +40,7 @@ interface QueueListProps {
   activePlayingType: 'original' | 'processed' | null;
   onTogglePlay: (id: string, type: 'original' | 'processed') => void;
   onUpdateItemSettings?: (id: string, newSettings: QueueItem['settings']) => void;
+  onResetItemSettings?: (id: string) => void;
 }
 
 export const QueueList: React.FC<QueueListProps> = ({
@@ -54,6 +57,7 @@ export const QueueList: React.FC<QueueListProps> = ({
   activePlayingType,
   onTogglePlay,
   onUpdateItemSettings,
+  onResetItemSettings,
 }) => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -261,16 +265,98 @@ export const QueueList: React.FC<QueueListProps> = ({
                         {item.processedSize && (
                           <>
                             <span className="text-zinc-600">➔</span>
-                            <span className="text-emerald-400 font-bold">
+                            <span className={`font-bold ${
+                              item.processedSize > 20 * 1024 * 1024
+                                ? 'text-rose-400 font-extrabold'
+                                : 'text-emerald-400'
+                            }`}>
                               {formatFileSize(item.processedSize)}
                             </span>
                           </>
                         )}
                       </span>
 
+                      {/* Roblox 20MB Compliance Badge */}
+                      {item.processedSize && (
+                        item.processedSize > 20 * 1024 * 1024 ? (
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 animate-pulse">
+                              <AlertTriangle className="w-3 h-3 text-rose-400" />
+                              <span>Melebihi Limit 20MB (Ditolak Roblox!)</span>
+                            </span>
+                            {onUpdateItemSettings && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onUpdateItemSettings(item.id, {
+                                    ...item.settings,
+                                    outputFormat: 'ogg',
+                                    oggQuality: 7,
+                                  });
+                                  onProcessItem(item.id);
+                                }}
+                                className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white shadow-sm flex items-center gap-1 transition"
+                                title="Ganti ke OGG 224k & proses ulang agar lolos batas Roblox"
+                              >
+                                <Zap className="w-2.5 h-2.5" />
+                                <span>Kompres ke OGG 224k (~3MB)</span>
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            <span>Aman Roblox ({Math.round((item.processedSize / (20 * 1024 * 1024)) * 100)}% kuota)</span>
+                          </span>
+                        )
+                      )}
+
+                      {item.settings.outputFormat === 'ogg' ? (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-teal-500/15 text-teal-300 border border-teal-500/30">
+                          {item.settings.oggQuality ? `${item.settings.oggQuality === 10 ? '450k' : item.settings.oggQuality === 9 ? '320k' : item.settings.oggQuality === 8 ? '256k' : item.settings.oggQuality === 7 ? '224k' : '192k'}` : '224k'}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/35 font-bold">
+                          WAV Uncompressed
+                        </span>
+                      )}
+
+                      {item.settings.amplifyDb !== 0 && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold">
+                          Gain: {item.settings.amplifyDb > 0 ? `+${item.settings.amplifyDb}` : item.settings.amplifyDb} dB
+                        </span>
+                      )}
+
+                      {item.settings.fadeInEnabled && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          FadeIn: {item.settings.fadeInDuration}s
+                        </span>
+                      )}
+
+                      {item.settings.fadeOutEnabled && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30">
+                          FadeOut: {item.settings.fadeOutDuration}s
+                        </span>
+                      )}
+
                       {item.settings.reverbType !== 'none' && (
                         <span className="text-[10px] text-purple-400">
                           Reverb: {item.settings.reverbType}
+                        </span>
+                      )}
+
+                      {item.settings.remasterProfile && item.settings.remasterProfile !== 'none' && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                          <span>
+                            {item.settings.remasterProfile === 'clarity'
+                              ? 'Master: Studio'
+                              : item.settings.remasterProfile === 'bass_punch'
+                              ? 'Master: Bass'
+                              : item.settings.remasterProfile === 'vocal_air'
+                              ? 'Master: Vocal'
+                              : 'Master: Max'}
+                          </span>
                         </span>
                       )}
                     </div>
@@ -280,10 +366,16 @@ export const QueueList: React.FC<QueueListProps> = ({
                 {/* Right: Status & Action Buttons */}
                 <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
                   {/* Status Indicator */}
-                  {item.status === 'ready' && (
+                  {item.status === 'ready' && !item.needsReProcess && (
                     <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       <span>Siap</span>
+                    </span>
+                  )}
+                  {item.status === 'ready' && item.needsReProcess && (
+                    <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-semibold text-amber-400 px-2 py-1 rounded-lg bg-amber-500/10 border border-amber-500/25 animate-pulse" title="Pengaturan telah berubah sejak pemrosesan terakhir. Silakan proses ulang.">
+                      <RotateCcw className="w-3 h-3" />
+                      <span>Perlu Proses Ulang</span>
                     </span>
                   )}
                   {item.status === 'error' && (
@@ -293,34 +385,48 @@ export const QueueList: React.FC<QueueListProps> = ({
                     </span>
                   )}
 
-                  {/* Play Processed / Original Button */}
-                  {item.status === 'ready' && (
+                  {/* Play Original vs Processed/Remaster Buttons */}
+                  <div className="flex items-center gap-1 bg-zinc-900/90 p-1 rounded-xl border border-zinc-800">
+                    {/* Play Original (Sebelum Remaster) */}
                     <button
                       type="button"
-                      onClick={() =>
-                        onTogglePlay(
-                          item.id,
-                          isPlayingThis && activePlayingType === 'processed' ? 'processed' : 'processed'
-                        )
-                      }
-                      className={`p-2 rounded-xl border transition active:scale-95 ${
-                        isPlayingThis && activePlayingType === 'processed'
-                          ? 'bg-red-500 text-white border-red-500 shadow-md shadow-red-500/25'
-                          : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                      onClick={() => onTogglePlay(item.id, 'original')}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 ${
+                        isPlayingThis && activePlayingType === 'original'
+                          ? 'bg-cyan-500 text-zinc-950 font-bold shadow-md shadow-cyan-500/30'
+                          : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80'
                       }`}
-                      title={
-                        isPlayingThis && activePlayingType === 'processed'
-                          ? 'Pause audio hasil'
-                          : 'Putar audio hasil percepatan'
-                      }
+                      title="Dengar audio asli (Sebelum Remaster & Percepatan)"
                     >
-                      {isPlayingThis && activePlayingType === 'processed' ? (
-                        <Pause className="w-4 h-4" />
+                      {isPlayingThis && activePlayingType === 'original' ? (
+                        <Pause className="w-3.5 h-3.5 fill-current" />
                       ) : (
-                        <Play className="w-4 h-4 fill-current" />
+                        <Play className="w-3.5 h-3.5 fill-current" />
                       )}
+                      <span>Asli</span>
                     </button>
-                  )}
+
+                    {/* Play Processed / Remastered (Sesudah) */}
+                    {item.status === 'ready' && (
+                      <button
+                        type="button"
+                        onClick={() => onTogglePlay(item.id, 'processed')}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 ${
+                          isPlayingThis && activePlayingType === 'processed'
+                            ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white font-bold shadow-md shadow-red-500/30'
+                            : 'text-amber-300 hover:text-amber-200 hover:bg-amber-500/10'
+                        }`}
+                        title="Dengar hasil Remaster & Percepatan"
+                      >
+                        {isPlayingThis && activePlayingType === 'processed' ? (
+                          <Pause className="w-3.5 h-3.5 fill-current" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                        )}
+                        <span>Hasil Remaster</span>
+                      </button>
+                    )}
+                  </div>
 
                   {/* Process Single Item Button */}
                   {item.status !== 'processing' && item.status !== 'decoding' && (
@@ -395,17 +501,44 @@ export const QueueList: React.FC<QueueListProps> = ({
               {/* Individual Item Settings Drawer */}
               {isExpanded && onUpdateItemSettings && (
                 <div className="p-4 border-t border-zinc-800/80 bg-zinc-950/90 rounded-b-xl space-y-3">
-                  <div className="flex items-center justify-between text-xs font-bold text-white mb-2">
-                    <span className="flex items-center gap-1.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold text-white mb-2">
+                    <span className="flex items-center gap-2">
                       <Sliders className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Pengaturan Khusus Track Ini:</span>
+                      <span>Pengaturan Track Ini:</span>
+                      {item.hasCustomSettings ? (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                          Khusus Track Ini
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
+                          <Check className="w-2.5 h-2.5" />
+                          <span>Sinkron Otomatis (Master Setting)</span>
+                        </span>
+                      )}
                     </span>
-                    <span className="text-[11px] text-zinc-400 font-mono">
-                      Perubahan hanya berlaku untuk item ini
-                    </span>
+                    {item.hasCustomSettings && onResetItemSettings && (
+                      <button
+                        type="button"
+                        onClick={() => onResetItemSettings(item.id)}
+                        className="text-[11px] text-zinc-400 hover:text-cyan-300 flex items-center gap-1 transition py-0.5 px-2 rounded bg-zinc-900 border border-zinc-800"
+                        title="Kembalikan nilai ke Master Setting global"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                        <span>Kembalikan ke Master Setting</span>
+                      </button>
+                    )}
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {item.needsReProcess && (
+                    <div className="p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-[11px] text-amber-200 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Pengaturan diubah setelah audio selesai. Klik <strong>Proses Ulang Item Ini</strong> di samping format agar audio menerapkan efek baru.</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
                     {/* Speed Override */}
                     <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
                       <div className="flex justify-between text-zinc-400 mb-1">
@@ -456,43 +589,206 @@ export const QueueList: React.FC<QueueListProps> = ({
                       />
                     </div>
 
-                    {/* Output Format Override */}
-                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
-                      <div className="text-zinc-400 mb-1.5">Format File:</div>
-                      <div className="grid grid-cols-2 gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() =>
+                    {/* Remaster Override */}
+                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex justify-between text-zinc-400 mb-1">
+                          <span className="flex items-center gap-1 text-amber-400 font-semibold">
+                            <Sparkles className="w-3 h-3" />
+                            <span>Remaster:</span>
+                          </span>
+                          <span className="font-mono text-amber-300 font-bold text-[10px]">
+                            {item.settings.remasterProfile && item.settings.remasterProfile !== 'none'
+                              ? item.settings.remasterProfile
+                              : 'Off'}
+                          </span>
+                        </div>
+                        <select
+                          value={item.settings.remasterProfile || 'none'}
+                          onChange={(e) =>
                             onUpdateItemSettings(item.id, {
                               ...item.settings,
-                              outputFormat: 'ogg',
+                              remasterProfile: e.target.value as any,
                             })
                           }
-                          className={`py-1 rounded text-center font-bold text-[11px] border ${
-                            item.settings.outputFormat === 'ogg'
-                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                          }`}
+                          className="w-full py-1 px-1.5 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-200 focus:outline-none focus:border-amber-500"
                         >
-                          .OGG
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            onUpdateItemSettings(item.id, {
-                              ...item.settings,
-                              outputFormat: 'wav',
-                            })
-                          }
-                          className={`py-1 rounded text-center font-bold text-[11px] border ${
-                            item.settings.outputFormat === 'wav'
-                              ? 'bg-blue-500/20 text-blue-300 border-blue-500/40'
-                              : 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                          }`}
-                        >
-                          .WAV
-                        </button>
+                          <option value="none">Off (Asli)</option>
+                          <option value="clarity">✨ Studio Master (Jernih & Punch)</option>
+                          <option value="bass_punch">🔊 Bass Punch (Nendang)</option>
+                          <option value="vocal_air">🎙️ Vocal Air (Vokal Renyah)</option>
+                          <option value="loudness_war">⚡ Max Loudness (Komersial)</option>
+                        </select>
                       </div>
+                      <div className="text-[9px] text-zinc-500 mt-1">
+                        Keras & bening tanpa nambah ukuran file
+                      </div>
+                    </div>
+
+                    {/* Fade In & Out Controls */}
+                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={item.settings.fadeInEnabled}
+                            onChange={(e) =>
+                              onUpdateItemSettings(item.id, {
+                                ...item.settings,
+                                fadeInEnabled: e.target.checked,
+                              })
+                            }
+                            className="rounded border-zinc-700 text-red-500 focus:ring-0 w-3 h-3"
+                          />
+                          <span>Fade In:</span>
+                        </label>
+                        <span className="font-mono text-zinc-400 text-[10px]">{item.settings.fadeInDuration}s</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="8.0"
+                        step="0.5"
+                        disabled={!item.settings.fadeInEnabled}
+                        value={item.settings.fadeInDuration}
+                        onChange={(e) =>
+                          onUpdateItemSettings(item.id, {
+                            ...item.settings,
+                            fadeInDuration: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer disabled:opacity-30"
+                      />
+
+                      <div className="flex items-center justify-between pt-1">
+                        <label className="flex items-center gap-1.5 cursor-pointer text-zinc-300">
+                          <input
+                            type="checkbox"
+                            checked={item.settings.fadeOutEnabled}
+                            onChange={(e) =>
+                              onUpdateItemSettings(item.id, {
+                                ...item.settings,
+                                fadeOutEnabled: e.target.checked,
+                              })
+                            }
+                            className="rounded border-zinc-700 text-red-500 focus:ring-0 w-3 h-3"
+                          />
+                          <span>Fade Out:</span>
+                        </label>
+                        <span className="font-mono text-zinc-400 text-[10px]">{item.settings.fadeOutDuration}s</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="0.5"
+                        max="8.0"
+                        step="0.5"
+                        disabled={!item.settings.fadeOutEnabled}
+                        value={item.settings.fadeOutDuration}
+                        onChange={(e) =>
+                          onUpdateItemSettings(item.id, {
+                            ...item.settings,
+                            fadeOutDuration: parseFloat(e.target.value),
+                          })
+                        }
+                        className="w-full h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer disabled:opacity-30"
+                      />
+                    </div>
+
+                    {/* Output Format & Quick Action */}
+                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between text-zinc-400 mb-1.5">
+                          <span>Format File:</span>
+                          {item.settings.outputFormat === 'wav' && (
+                            <span className="text-[10px] text-rose-400 font-bold flex items-center gap-1">
+                              <AlertTriangle className="w-3 h-3" />
+                              <span>Bisa Bengkak &gt; 20MB</span>
+                            </span>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateItemSettings(item.id, {
+                                ...item.settings,
+                                outputFormat: 'ogg',
+                                oggQuality: item.settings.oggQuality || 7,
+                              })
+                            }
+                            className={`py-1 rounded text-center font-bold text-[11px] border ${
+                              item.settings.outputFormat === 'ogg'
+                                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 ring-1 ring-emerald-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                            }`}
+                          >
+                            .OGG (Lolos Roblox)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              onUpdateItemSettings(item.id, {
+                                ...item.settings,
+                                outputFormat: 'wav',
+                              })
+                            }
+                            className={`py-1 rounded text-center font-bold text-[11px] border ${
+                              item.settings.outputFormat === 'wav'
+                                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 ring-1 ring-rose-500/30'
+                                : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                            }`}
+                          >
+                            .WAV (Uncompressed)
+                          </button>
+                        </div>
+
+                        {item.settings.outputFormat === 'ogg' && (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between text-zinc-400 text-[10px] mb-1">
+                              <span>Bitrate OGG:</span>
+                              <span className="text-emerald-400 font-mono font-bold">
+                                {(item.settings.oggQuality ?? 7) === 7 ? '224k (Rekomendasi)' : `${item.settings.oggQuality === 6 ? '192k' : item.settings.oggQuality === 8 ? '256k' : '320k'}`}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-4 gap-1">
+                              {[
+                                { q: 6, label: '192k' },
+                                { q: 7, label: '224k' },
+                                { q: 8, label: '256k' },
+                                { q: 9, label: '320k' },
+                              ].map((opt) => (
+                                <button
+                                  key={opt.q}
+                                  type="button"
+                                  onClick={() =>
+                                    onUpdateItemSettings(item.id, {
+                                      ...item.settings,
+                                      oggQuality: opt.q,
+                                    })
+                                  }
+                                  className={`py-0.5 rounded text-center text-[10px] font-bold border ${
+                                    (item.settings.oggQuality ?? 7) === opt.q
+                                      ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60 ring-1 ring-emerald-500/40'
+                                      : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-200'
+                                  }`}
+                                >
+                                  {opt.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => onProcessItem(item.id)}
+                        disabled={item.status === 'processing' || item.status === 'decoding'}
+                        className="mt-2 w-full py-1.5 px-2 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white flex items-center justify-center gap-1.5 shadow-sm transition active:scale-95 disabled:opacity-40"
+                      >
+                        <Zap className="w-3.5 h-3.5 fill-white" />
+                        <span>Proses Ulang Item Ini</span>
+                      </button>
                     </div>
                   </div>
                 </div>
