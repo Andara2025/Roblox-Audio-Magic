@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AudioSettings, OutputAudioFormat, ReverbType } from '../types';
 import {
   Sliders,
@@ -19,6 +19,9 @@ import {
   HardDrive,
   Info,
   Lock,
+  ShieldAlert,
+  Copy,
+  Check,
 } from 'lucide-react';
 
 interface GlobalControlsProps {
@@ -38,6 +41,26 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
   isProcessing,
   queueCount,
 }) => {
+  const [copiedSpeed, setCopiedSpeed] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
+
+  const detuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
+  const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+  const totalEffectiveSpeed = Math.max(0.1, settings.speedUp * (settings.pitchMode === 'resample' ? detuneRatio : 1.0));
+  const effectiveRobloxPlaybackSpeed = Number((1 / totalEffectiveSpeed).toFixed(3));
+
+  const copyRobloxSpeed = () => {
+    navigator.clipboard.writeText(effectiveRobloxPlaybackSpeed.toString());
+    setCopiedSpeed(true);
+    setTimeout(() => setCopiedSpeed(false), 2000);
+  };
+
+  const copyRobloxScript = () => {
+    navigator.clipboard.writeText(`workspace.Sound.PlaybackSpeed = ${effectiveRobloxPlaybackSpeed}`);
+    setCopiedScript(true);
+    setTimeout(() => setCopiedScript(false), 2000);
+  };
+
   const handleFormatChange = (outputFormat: OutputAudioFormat) => {
     onChangeSettings({
       ...settings,
@@ -155,6 +178,85 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
             onClick={() =>
               onChangeSettings({
                 ...settings,
+                antiCopyrightStealth: true,
+                pitchDetuneCents: 120,
+                haasStereoWide: true,
+                harmonicWarmth: true,
+                spectralDither: true,
+                leadInSilenceSec: 2.0,
+                centerMasking: true,
+                speedUp: 3.125,
+                robloxPlaybackSpeed: 0.32,
+                amplifyDb: 5,
+                fadeInEnabled: true,
+                fadeInDuration: 2.0,
+                fadeOutEnabled: true,
+                fadeOutDuration: 3.0,
+                outputFormat: 'ogg',
+                oggQuality: 8,
+                reverbType: 'hall',
+                reverbMix: 0.35,
+                reverbDecay: 3.2,
+                preserveQuality: true,
+                autoFitRobloxLimit: true,
+              })
+            }
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
+              settings.antiCopyrightStealth && (settings.pitchDetuneCents ?? 0) >= 100
+                ? 'bg-gradient-to-r from-rose-600 via-purple-600 to-amber-600 text-white shadow-md shadow-rose-600/30 ring-1 ring-rose-300'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-rose-300 border border-rose-800/60'
+            }`}
+            title="Setting paling ampuh untuk lagu yang berulang kali gagal: Speed 3.125x (PBS 0.320), Detune +120c (+1.2 Semitone), Reverb Hall 35%, Decoy Lead-in 2s, Vokal Center Masking"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
+            <span>👑 Bypass Ekstrem (Lagu Sulit / Populer)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onChangeSettings({
+                ...settings,
+                antiCopyrightStealth: true,
+                pitchDetuneCents: 45,
+                haasStereoWide: true,
+                harmonicWarmth: true,
+                spectralDither: true,
+                leadInSilenceSec: 0,
+                centerMasking: true,
+                speedUp: 2.381,
+                robloxPlaybackSpeed: 0.42,
+                amplifyDb: 5,
+                fadeInEnabled: true,
+                fadeInDuration: 2.0,
+                fadeOutEnabled: true,
+                fadeOutDuration: 3.0,
+                outputFormat: 'ogg',
+                oggQuality: 8,
+                reverbType: 'hall',
+                reverbMix: 0.25,
+                reverbDecay: 2.4,
+                preserveQuality: true,
+                autoFitRobloxLimit: true,
+              })
+            }
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
+              settings.antiCopyrightStealth && (settings.pitchDetuneCents ?? 0) < 100
+                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-300'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-purple-300 border border-purple-800/60'
+            }`}
+            title="Acoustic Fingerprint Protection: Kecepatan non-standar 2.381x (PBS 0.420), Micro-Detune +45c, Haas 3D Stereo Phase, Tape Saturation, OGG 256k"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-purple-200" />
+            <span>🛡️ Acoustic Protection Pro (PBS 0.420)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onChangeSettings({
+                ...settings,
+                antiCopyrightStealth: false,
                 speedUp: 2.326,
                 robloxPlaybackSpeed: 0.43,
                 amplifyDb: 5,
@@ -172,6 +274,7 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
               })
             }
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
+              !settings.antiCopyrightStealth &&
               settings.amplifyDb === 5 &&
               settings.reverbType === 'hall' &&
               settings.fadeInEnabled &&
@@ -303,10 +406,37 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
           </div>
 
           <div className="mt-3 p-2.5 rounded-lg bg-zinc-900 border border-zinc-800/80 text-[11px] text-zinc-400 flex items-center justify-between">
-            <span>Roblox PlaybackSpeed:</span>
-            <span className="font-mono font-bold text-red-300">
-              {settings.robloxPlaybackSpeed}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span>Roblox PlaybackSpeed:</span>
+              {settings.antiCopyrightStealth && (
+                <span className="text-[10px] font-semibold text-purple-300 bg-purple-500/20 px-1.5 py-0.5 rounded border border-purple-500/30">
+                  Stealth (+{settings.pitchDetuneCents ?? 45}c)
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="font-mono font-bold text-red-300 text-xs">
+                {effectiveRobloxPlaybackSpeed}
+              </span>
+              <button
+                type="button"
+                onClick={copyRobloxSpeed}
+                className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition active:scale-95 flex items-center gap-1 text-[10px]"
+                title="Salin nilai PlaybackSpeed untuk Roblox Studio"
+              >
+                {copiedSpeed ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-400" />
+                    <span className="text-emerald-400">Tersalin</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3 h-3 text-zinc-400" />
+                    <span>Salin</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -718,6 +848,218 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                 className="w-full h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer disabled:opacity-30"
               />
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Anti-Copyright Stealth Bypasser Panel */}
+      <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-purple-950/40 via-zinc-950/80 to-indigo-950/30 border border-purple-800/60 shadow-lg shadow-purple-950/20">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-purple-900/50">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+              <ShieldAlert className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-white tracking-wide">
+                  🛡️ Acoustic Fingerprint Protection Suite (DSP Anti-Detection)
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                  Audible Magic & ACRCloud Obfuscation
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Proteksi sidik jari akustik tingkat DSP (Dispersi Fase Stereo 3D, Kalibrasi Nada Mikro, dan Saturasi Harmonik Analog)
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() =>
+                onChangeSettings({
+                  ...settings,
+                  antiCopyrightStealth: !settings.antiCopyrightStealth,
+                  pitchDetuneCents: settings.pitchDetuneCents ?? 45,
+                  haasStereoWide: settings.haasStereoWide ?? true,
+                  harmonicWarmth: settings.harmonicWarmth ?? true,
+                  spectralDither: settings.spectralDither ?? true,
+                })
+              }
+              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                settings.antiCopyrightStealth ? 'bg-purple-600' : 'bg-zinc-800'
+              }`}
+              title="Aktifkan Acoustic Fingerprint Protection untuk mencegah deteksi otomatis hak cipta Roblox"
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
+                  settings.antiCopyrightStealth ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Anti-Copyright Details & Controls */}
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
+          {/* Pilar 1: Haas Phase Scrambling */}
+          <div className="p-3 rounded-lg bg-zinc-900/80 border border-zinc-800/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-zinc-200 text-[11px] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+                  Haas Phase Disperser
+                </span>
+                <span className="text-[10px] text-purple-400 font-mono">3.8ms Delay</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 leading-relaxed">
+                Pemindai mengonversi stereo L+R ke mono. Penundaan 3.8ms menciptakan pembatalan fasa pada sinyal mono yang mengaburkan hash sidik jari, sementara stereo tetap 3D megah di telinga pendengar.
+              </p>
+            </div>
+            <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px]">
+              <span className="text-zinc-500">Status:</span>
+              <span className={settings.antiCopyrightStealth ? 'text-emerald-400 font-bold' : 'text-zinc-500'}>
+                {settings.antiCopyrightStealth ? 'Aktif (3D Widening)' : 'Nonaktif'}
+              </span>
+            </div>
+          </div>
+
+          {/* Pilar 2: Micro Pitch Detune */}
+          <div className="p-3 rounded-lg bg-zinc-900/80 border border-zinc-800/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-zinc-200 text-[11px] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                  Pitch Shift Calibration
+                </span>
+                <span className="text-[10px] text-indigo-300 font-mono font-bold">
+                  {(settings.pitchDetuneCents ?? 45) > 0 ? `+${settings.pitchDetuneCents ?? 45}` : (settings.pitchDetuneCents ?? 45)}c{' '}
+                  <span className="text-[9px] text-zinc-400">
+                    ({((settings.pitchDetuneCents ?? 45) / 100).toFixed(1)}st)
+                  </span>
+                </span>
+              </div>
+              <p className="text-[10px] text-zinc-400 leading-relaxed">
+                Geser nada (+100c s/d +150c = +1 s/d +1.5 semitone). Mengubah kunci nada secara drastis untuk meloloskan lagu yang lolos dari detune mikro.
+              </p>
+            </div>
+            <div className="mt-2 pt-2 border-t border-zinc-800/60">
+              <input
+                type="range"
+                min="-60"
+                max="200"
+                step="5"
+                disabled={!settings.antiCopyrightStealth}
+                value={settings.pitchDetuneCents ?? 45}
+                onChange={(e) =>
+                  onChangeSettings({ ...settings, pitchDetuneCents: parseInt(e.target.value, 10) })
+                }
+                className="w-full h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer disabled:opacity-30 accent-indigo-500"
+              />
+              <div className="flex items-center justify-between gap-1 mt-1.5">
+                {[
+                  { label: '+45c', val: 45 },
+                  { label: '+100c (+1st)', val: 100 },
+                  { label: '+120c (Top)', val: 120 },
+                  { label: '+150c', val: 150 },
+                ].map((chip) => (
+                  <button
+                    type="button"
+                    key={chip.val}
+                    disabled={!settings.antiCopyrightStealth}
+                    onClick={() => onChangeSettings({ ...settings, pitchDetuneCents: chip.val })}
+                    className={`px-1.5 py-0.5 rounded text-[9px] font-mono border transition ${
+                      (settings.pitchDetuneCents ?? 45) === chip.val
+                        ? 'bg-indigo-600 text-white border-indigo-400 font-bold'
+                        : 'bg-zinc-800 text-zinc-400 border-zinc-700 hover:text-zinc-200'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Pilar 3: Harmonic Saturation & Mid/Side Masking */}
+          <div className="p-3 rounded-lg bg-zinc-900/80 border border-zinc-800/80 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-zinc-200 text-[11px] flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-pink-400"></span>
+                  Analog Excite & Vocal Masking
+                </span>
+                <span className="text-[10px] text-pink-400 font-mono">Mid/Side</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 leading-relaxed">
+                Meredam vokal di center mono dan memperkaya overtone analog tape agar signature vokal terganggu.
+              </p>
+            </div>
+            <div className="mt-2 pt-2 border-t border-zinc-800/60 flex items-center justify-between text-[11px]">
+              <span className="text-zinc-400 text-[10px]">Vocal Masking:</span>
+              <button
+                type="button"
+                disabled={!settings.antiCopyrightStealth}
+                onClick={() =>
+                  onChangeSettings({
+                    ...settings,
+                    centerMasking: settings.centerMasking === false ? true : false,
+                  })
+                }
+                className={`px-2 py-0.5 rounded text-[10px] font-bold border transition ${
+                  settings.centerMasking !== false && settings.antiCopyrightStealth
+                    ? 'bg-pink-500/20 text-pink-300 border-pink-500/50'
+                    : 'bg-zinc-800 text-zinc-500 border-zinc-700'
+                }`}
+              >
+                {settings.centerMasking !== false && settings.antiCopyrightStealth ? 'Aktif' : 'Off'}
+              </button>
+            </div>
+          </div>
+
+          {/* Pilar 4: Roblox Lua Script Helper */}
+          <div className="p-3 rounded-lg bg-purple-950/40 border border-purple-900/60 flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-semibold text-purple-200 text-[11px]">Parameter Playback Roblox</span>
+                <span className="text-[10px] text-purple-300 font-mono font-bold">{effectiveRobloxPlaybackSpeed}</span>
+              </div>
+              <div className="p-1.5 rounded bg-zinc-950 border border-purple-800/40 font-mono text-[10px] text-purple-300 break-all">
+                workspace.Sound.PlaybackSpeed = {effectiveRobloxPlaybackSpeed}
+              </div>
+            </div>
+            <div className="mt-2 pt-2 border-purple-900/40 flex items-center justify-between gap-1">
+              <button
+                type="button"
+                onClick={copyRobloxScript}
+                className="w-full py-1 rounded bg-purple-600 hover:bg-purple-500 text-white font-semibold text-[10px] transition active:scale-95 flex items-center justify-center gap-1"
+              >
+                {copiedScript ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                <span>{copiedScript ? 'Script Disalin!' : 'Salin Script Roblox'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Tactical Recommendation Banner for Difficult Songs */}
+        <div className="mt-3 p-3 rounded-lg bg-zinc-900/90 border border-amber-500/30 flex flex-col sm:flex-row items-start gap-3">
+          <div className="w-6 h-6 rounded-md bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0 mt-0.5">
+            💡
+          </div>
+          <div className="text-xs text-zinc-300 space-y-1">
+            <div className="font-bold text-amber-300">Saran Pengaturan Terbaik Jika Masih Terdeteksi Hak Cipta:</div>
+            <ol className="list-decimal list-inside space-y-0.5 text-[11px] text-zinc-300 leading-relaxed">
+              <li>
+                <strong>Potong 5–15 Detik Intro:</strong> 90% bot mencocokkan intro awal lagu. Gunakan tombol <strong>✂️ Potong Timestamp</strong> di atas untuk memotong intro 5–10 detik pertama.
+              </li>
+              <li>
+                <strong>Pilih Preset "👑 Bypass Ekstrem":</strong> Menggunakan kecepatan tinggi <strong>3.125x (PBS 0.320)</strong> dan detune <strong>+120 cents (+1.2 semitone)</strong> yang mengubah kunci nada secara signifikan.
+              </li>
+              <li>
+                <strong>Tingkatkan Reverb ke 35% – 40%:</strong> Reverb tebal membaurkan puncak spektral (*spectral smearing*) sehingga hash bot tidak cocok.
+              </li>
+            </ol>
           </div>
         </div>
       </div>

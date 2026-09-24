@@ -13,12 +13,28 @@ export interface RobloxSpeedPreset {
 
 export const ROBLOX_SPEED_PRESETS: RobloxSpeedPreset[] = [
   {
+    id: 'stealth-0.42',
+    label: '🛡️ Stealth 0.42 (2.381x)',
+    speedUp: 2.381,
+    robloxPlaybackSpeed: 0.42,
+    formula: 'PlaybackSpeed = 1 / 2.381 ≈ 0.420',
+    description: 'Rasio non-standar anti-fingerprint! Mengelabui tabel indexing Audible Magic & ACRCloud',
+  },
+  {
     id: 'speed-2.326',
     label: '0.43 (2.326x)',
     speedUp: 2.326,
     robloxPlaybackSpeed: 0.43,
     formula: 'PlaybackSpeed = 1 / 2.326 ≈ 0.43',
     description: 'Preset paling populer! Hemat durasi ~57%, kualitas vokal tetap jernih di Roblox',
+  },
+  {
+    id: 'stealth-0.39',
+    label: '🛡️ Stealth 0.39 (2.551x)',
+    speedUp: 2.551,
+    robloxPlaybackSpeed: 0.392,
+    formula: 'PlaybackSpeed = 1 / 2.551 ≈ 0.392',
+    description: 'Percepatan agresif non-standar untuk lagu yang sangat ketat terdeteksi hak cipta',
   },
   {
     id: 'speed-2',
@@ -93,6 +109,19 @@ export interface AudioSettings {
   remasterProfile?: RemasterProfile;
   remasterIntensity?: number;
   autoFitRobloxLimit?: boolean; // Otomatis turunkan bitrate jika audio panjang agar file selalu < 19.5MB
+  // Trimming / Intro Cut (Anti-Bot Zero-Anchor Disruption)
+  trimStartSec?: number; // Mulai audio di detik ke-X (cth: 12 detik untuk membuang intro asli)
+  trimEndSec?: number; // Berhenti di detik ke-Y (opsional)
+  // Anti-Copyright Stealth Fingerprint Disruption Suite
+  antiCopyrightStealth?: boolean; // Master toggle Acoustic Fingerprint Protection
+  pitchDetuneCents?: number; // Micro pitch shift (-100 to +250 cents, default +45 cents)
+  haasStereoWide?: boolean; // Haas 3.8ms delay & phase dispersion (hancurkan mono-sum fingerprint)
+  harmonicWarmth?: boolean; // Analog tape saturation (menghasilkan overtone baru yang tidak ada di rekaman asli)
+  spectralDither?: boolean; // Masking noise floor (-48dB) untuk mengacaukan hash matriks Fourier
+  leadInSilenceSec?: number; // Pre-roll jeda hening / ambient di awal file (menggeser koordinat waktu t0 pemindai)
+  centerMasking?: boolean; // Redam vokal center mono dan lebarkan side stereo agar profil spektral vokal berubah
+  vinylTextureMask?: boolean; // Tekstur analog vinyl / tape crackle (-28dB) yang menghancurkan matriks konstelasi FFT
+  tapeFlutter?: boolean; // Micro-LFO tape flutter (modulasi pitch dinamis ±12 cents)
 }
 
 export type QueueItemStatus = 'idle' | 'decoding' | 'processing' | 'ready' | 'error';

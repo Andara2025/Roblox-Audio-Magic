@@ -23,6 +23,7 @@ import {
   Zap,
   Check,
   Copy,
+  Scissors,
 } from 'lucide-react';
 import { formatDuration, formatFileSize } from '../utils/audioEngine';
 
@@ -227,10 +228,23 @@ export const QueueList: React.FC<QueueListProps> = ({
                         {item.settings.speedUp}x
                       </span>
 
+                      {/* Anti-Copyright Stealth Badge */}
+                      {item.settings.antiCopyrightStealth && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                          🛡️ Stealth (+{item.settings.pitchDetuneCents ?? 45}c)
+                        </span>
+                      )}
+
                       {/* Roblox PlaybackSpeed Pill */}
                       <button
                         type="button"
-                        onClick={() => copySpeed(item.id, item.settings.robloxPlaybackSpeed)}
+                        onClick={() => {
+                          const detuneCents = item.settings.antiCopyrightStealth ? (item.settings.pitchDetuneCents ?? 45) : 0;
+                          const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+                          const totalSpeed = item.settings.speedUp * (item.settings.pitchMode === 'resample' ? detuneRatio : 1.0);
+                          const pbs = Number((1 / totalSpeed).toFixed(3));
+                          copySpeed(item.id, pbs);
+                        }}
                         className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/25 transition flex items-center gap-1"
                         title="Klik untuk salin nilai Roblox PlaybackSpeed"
                       >
@@ -239,8 +253,36 @@ export const QueueList: React.FC<QueueListProps> = ({
                         ) : (
                           <Copy className="w-3 h-3 text-cyan-400" />
                         )}
-                        <span>Roblox PBS: {item.settings.robloxPlaybackSpeed}</span>
+                        <span>
+                          Roblox PBS:{' '}
+                          {item.settings.antiCopyrightStealth
+                            ? Number((1 / (item.settings.speedUp * Math.pow(2, (item.settings.pitchDetuneCents ?? 45) / 1200))).toFixed(3))
+                            : item.settings.robloxPlaybackSpeed}
+                        </span>
                       </button>
+
+                      {/* Potong Intro Button / Status */}
+                      {onUpdateItemSettings && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExpandedId(item.id);
+                          }}
+                          className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border transition flex items-center gap-1.5 active:scale-95 ${
+                            item.settings.trimStartSec && item.settings.trimStartSec > 0
+                              ? 'bg-amber-500/25 text-amber-300 border-amber-500/50 shadow-sm'
+                              : 'bg-amber-500/10 text-amber-300/90 border-amber-500/30 hover:bg-amber-500/20'
+                          }`}
+                          title="Klik untuk membuka alat potong intro lagu ini"
+                        >
+                          <Scissors className="w-3 h-3 text-amber-400" />
+                          <span>
+                            {item.settings.trimStartSec && item.settings.trimStartSec > 0
+                              ? `Intro: -${item.settings.trimStartSec}s Dipotong`
+                              : '✂️ Potong Intro'}
+                          </span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Secondary Meta Row */}
@@ -548,6 +590,74 @@ export const QueueList: React.FC<QueueListProps> = ({
                       </div>
                     </div>
                   )}
+
+                  {/* Anti-Copyright Intro Trimmer Card */}
+                  <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-950/40 via-zinc-900 to-zinc-900 border border-amber-500/40 text-xs space-y-2.5 shadow-md">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
+                          <Scissors className="w-3.5 h-3.5" />
+                        </div>
+                        <span className="font-bold text-white text-xs">
+                          Potong Intro Lagu (Trik Terampuh Anti-Copyright Bot)
+                        </span>
+                      </div>
+                      <span className="font-mono font-bold text-amber-300 text-xs">
+                        {item.settings.trimStartSec && item.settings.trimStartSec > 0
+                          ? `Potong ${item.settings.trimStartSec}s awal (Mulai di 00:${item.settings.trimStartSec < 10 ? '0' : ''}${item.settings.trimStartSec})`
+                          : '00:00 (Intro Lengkap / Tidak Dipotong)'}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-300 leading-relaxed">
+                      Bot Roblox mencocokkan sampel di detik <strong>00:00 s/d 00:15</strong>. Memotong 10-15 detik pertama (langsung lompat ke lagu/vokal) akan menghancurkan titik acuan bot.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+                      <input
+                        type="range"
+                        min="0"
+                        max={Math.min(60, Math.floor(item.duration * 0.5))}
+                        step="1"
+                        value={item.settings.trimStartSec || 0}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          onUpdateItemSettings(item.id, {
+                            ...item.settings,
+                            trimStartSec: val,
+                          });
+                        }}
+                        className="flex-1 h-2 bg-zinc-800 rounded appearance-none cursor-pointer accent-amber-400"
+                      />
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                        {[
+                          { label: '0s (Penuh)', val: 0 },
+                          { label: '10s', val: 10 },
+                          { label: '12s (Top)', val: 12 },
+                          { label: '15s (Rekomendasi)', val: 15 },
+                          { label: '20s', val: 20 },
+                        ].map((chip) => (
+                          <button
+                            type="button"
+                            key={chip.val}
+                            onClick={() =>
+                              onUpdateItemSettings(item.id, {
+                                ...item.settings,
+                                trimStartSec: chip.val,
+                              })
+                            }
+                            className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition active:scale-95 ${
+                              (item.settings.trimStartSec || 0) === chip.val
+                                ? 'bg-amber-500 text-zinc-950 border-amber-400 shadow-sm font-black'
+                                : 'bg-zinc-800 text-zinc-300 border-zinc-700 hover:text-white hover:bg-zinc-750'
+                            }`}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Speed Override */}

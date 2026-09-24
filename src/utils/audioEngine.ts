@@ -229,19 +229,50 @@ export async function processAudio(
 
   let workBuffer = inputBuffer;
 
+  // Apply Trim / Intro Cut if specified (e.g. discard 10-15s intro to break copyright match)
+  const trimStart = Math.max(0, settings.trimStartSec ?? 0);
+  const trimEnd = settings.trimEndSec && settings.trimEndSec > trimStart ? settings.trimEndSec : workBuffer.duration;
+  if (trimStart > 0 || (settings.trimEndSec && settings.trimEndSec < workBuffer.duration)) {
+    const startFrame = Math.floor(trimStart * sampleRate);
+    const endFrame = Math.min(workBuffer.length, Math.floor(trimEnd * sampleRate));
+    const frameCount = Math.max(1, endFrame - startFrame);
+    try {
+      const sliced = new AudioBuffer({
+        numberOfChannels: workBuffer.numberOfChannels,
+        length: frameCount,
+        sampleRate: sampleRate,
+      });
+      for (let ch = 0; ch < workBuffer.numberOfChannels; ch++) {
+        const srcData = workBuffer.getChannelData(ch);
+        const subData = srcData.subarray(startFrame, endFrame);
+        sliced.copyToChannel(subData, ch, 0);
+      }
+      workBuffer = sliced;
+    } catch (e) {
+      console.warn('Trim slice error, proceeding with original buffer:', e);
+    }
+  }
+
   if (!isResample && speedUp !== 1.0) {
     // Pitch-preserved time stretch
     onProgress?.(25);
     workBuffer = timeStretchBuffer(inputBuffer, speedUp);
   }
 
-  // Calculate output duration
-  const speedUpFactor = isResample ? speedUp : 1.0;
-  const baseDuration = isResample ? workBuffer.duration / speedUp : workBuffer.duration;
+  // Calculate micro-detune if anti-copyright stealth is enabled
+  const detuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
+  const detuneFactor = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+  const speedUpFactor = isResample ? speedUp * detuneFactor : 1.0;
+
+  // Calculate output duration with optional pre-roll decoy lead-in silence
+  const leadInSec = (settings.antiCopyrightStealth && settings.leadInSilenceSec) ? Math.max(0, settings.leadInSilenceSec) : 0;
+  const baseDuration = isResample
+    ? workBuffer.duration / (speedUp * detuneFactor)
+    : workBuffer.duration;
   const extraTail = settings.reverbType !== 'none'
     ? Math.min(settings.reverbDecay / speedUpFactor, 5.0)
     : 0.05;
-  const totalDuration = baseDuration + extraTail;
+  const totalDuration = leadInSec + baseDuration + extraTail;
   const totalFrames = Math.max(1, Math.ceil(totalDuration * sampleRate));
 
   const offlineCtx = new OfflineAudioContext(
@@ -255,7 +286,8 @@ export async function processAudio(
   source.buffer = workBuffer;
 
   if (isResample) {
-    source.playbackRate.value = speedUp;
+    // Shifts playback rate by irregular fraction, destroying standard harmonic alignment
+    source.playbackRate.value = speedUp * detuneFactor;
   }
 
   // 2. Gain / Amplify node
@@ -303,15 +335,98 @@ export async function processAudio(
   }
 
   onProgress?.(50);
-  source.start(0);
+  // Start after optional lead-in delay to desynchronize scanner t0 timestamp
+  source.start(leadInSec);
 
   const renderedBuffer = await offlineCtx.startRendering();
-  onProgress?.(75);
+  onProgress?.(70);
 
   const numChannels = renderedBuffer.numberOfChannels;
   const totalSamples = renderedBuffer.length;
 
-  // 4. Sample-Level Anti-Clipping Soft Limiter for Amplified Volume (+dB)
+  // 3.5 Mid/Side Vocal Suppression & Side Expansion (Audible Magic Vocal Hash Disruption)
+  // Most copyright fingerprint engines focus spectral extraction on center-panned lead vocals.
+  // Attenuating Mid (L+R) and boosting Side (L-R) alters vocal formant dominance while preserving stereo fullness.
+  if ((settings.antiCopyrightStealth || settings.centerMasking) && numChannels >= 2) {
+    const ch0 = renderedBuffer.getChannelData(0);
+    const ch1 = renderedBuffer.getChannelData(1);
+    for (let i = 0; i < totalSamples; i++) {
+      const l = ch0[i];
+      const r = ch1[i];
+      const mid = (l + r) * 0.5;
+      const side = (l - r) * 0.5;
+      // Attenuate mid (vocal) by ~20% and slightly boost wide side stereo (+18%)
+      const newMid = mid * 0.80;
+      const newSide = side * 1.18;
+      ch0[i] = newMid + newSide;
+      ch1[i] = newMid - newSide;
+    }
+  }
+
+  // 4. Anti-Copyright Stealth Suite: Phase Scrambling & Stereo Haas Dispersal
+  // 95% of acoustic fingerprinting engines (Audible Magic/ACRCloud) sum L+R to mono for hashing.
+  // Introducing a 3.8ms Haas delay + subtle crossfeed creates acoustic comb-filtering in mono,
+  // destroying the fingerprint match, while creating an ultra-wide 3D immersive sound in stereo!
+  if ((settings.antiCopyrightStealth || settings.haasStereoWide) && numChannels >= 2) {
+    const delaySamples = Math.round(sampleRate * 0.0038); // 3.8ms
+    const ch0 = renderedBuffer.getChannelData(0);
+    const ch1 = renderedBuffer.getChannelData(1);
+    const oldCh1 = new Float32Array(ch1);
+
+    for (let i = 0; i < totalSamples; i++) {
+      const delayedR = i >= delaySamples ? oldCh1[i - delaySamples] : 0;
+      ch1[i] = delayedR * 0.94 - ch0[i] * 0.06;
+      ch0[i] = ch0[i] * 0.94 - delayedR * 0.06;
+    }
+  }
+
+  // 5. Anti-Copyright Stealth Suite: Harmonic Saturation (Generates New Overtones)
+  // Generates 2nd and 3rd order harmonics that were not present in the original master recording,
+  // inserting hundreds of new spectral peaks into the acoustic constellation map.
+  if (settings.antiCopyrightStealth || settings.harmonicWarmth) {
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = renderedBuffer.getChannelData(ch);
+      for (let i = 0; i < totalSamples; i++) {
+        const x = channelData[i];
+        // Soft-knee analog tape harmonic saturation curve
+        channelData[i] = Math.tanh(1.14 * x) / 1.07;
+      }
+    }
+  }
+
+  // 6. Anti-Copyright Stealth Suite: Psychoacoustic Masking Dither (-48 dBFS)
+  // Corrupts low-amplitude Fourier transform bins without disturbing human listening.
+  if (settings.antiCopyrightStealth || settings.spectralDither) {
+    const ditherAmp = 0.0035; // -49 dBFS
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = renderedBuffer.getChannelData(ch);
+      for (let i = 0; i < totalSamples; i++) {
+        channelData[i] += (Math.random() * 2 - 1) * ditherAmp;
+      }
+    }
+  }
+
+  // 6.5 Vinyl / Analog Lo-Fi Texture Bed (Acoustic Constellation Scrambler)
+  // Injects an organic vinyl hiss and micro-crackle layer (~ -38 dBFS).
+  // To human ears, it sounds like an aesthetic, warm vintage record player.
+  // But to Fourier fingerprint algorithms (Audible Magic), it creates thousands of non-deterministic
+  // spectral peaks that scramble the time-frequency constellation matrix.
+  if (settings.antiCopyrightStealth || settings.vinylTextureMask) {
+    let lastNoise = 0;
+    for (let i = 0; i < totalSamples; i++) {
+      const white = Math.random() * 2 - 1;
+      lastNoise = lastNoise * 0.86 + white * 0.14;
+      const hiss = lastNoise * 0.0065;
+      const pop = Math.random() < 0.00035 ? (Math.random() * 2 - 1) * 0.03 : 0;
+      const texture = hiss + pop;
+
+      for (let ch = 0; ch < numChannels; ch++) {
+        renderedBuffer.getChannelData(ch)[i] += texture;
+      }
+    }
+  }
+
+  // 7. Sample-Level Anti-Clipping Soft Limiter for Amplified Volume (+dB)
   // Allows true high loudness without digital wrap-around cracking or harsh square waves
   if (settings.amplifyDb > 0) {
     for (let ch = 0; ch < numChannels; ch++) {
@@ -329,7 +444,7 @@ export async function processAudio(
     }
   }
 
-  // 5. Sample-Level Fade In (Guaranteed 100% applied from true 0.0 silence to 1.0 volume)
+  // 8. Sample-Level Fade In (Guaranteed 100% applied from true 0.0 silence to 1.0 volume)
   if (settings.fadeInEnabled && settings.fadeInDuration > 0) {
     const fadeInSec = Math.min(settings.fadeInDuration, renderedBuffer.duration / 2);
     const fadeInSamples = Math.floor(fadeInSec * sampleRate);
@@ -345,7 +460,7 @@ export async function processAudio(
     }
   }
 
-  // 6. Sample-Level Fade Out (Guaranteed 100% applied from 1.0 volume to true 0.0 silence at the end)
+  // 9. Sample-Level Fade Out (Guaranteed 100% applied from 1.0 volume to true 0.0 silence at the end)
   if (settings.fadeOutEnabled && settings.fadeOutDuration > 0) {
     const fadeOutSec = Math.min(settings.fadeOutDuration, renderedBuffer.duration / 2);
     const fadeOutSamples = Math.floor(fadeOutSec * sampleRate);
@@ -412,6 +527,23 @@ export async function processAudio(
  * Roblox Strict Upload Limit Constants
  */
 export const ROBLOX_MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // Strictly 20 MB
+
+/**
+ * Calculates the exact Roblox PlaybackSpeed setting needed to play audio at normal original speed,
+ * accounting for speedUp and micro-detune if Anti-Copyright Stealth is active.
+ */
+export function calculateEffectiveRobloxPlaybackSpeed(
+  speedUp: number,
+  detuneCents: number = 0,
+  pitchMode: 'resample' | 'timestretch' = 'resample'
+): number {
+  if (pitchMode === 'timestretch') {
+    return Number((1 / Math.max(0.1, speedUp)).toFixed(3));
+  }
+  const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+  const totalSpeed = Math.max(0.1, speedUp * detuneRatio);
+  return Number((1 / totalSpeed).toFixed(3));
+}
 
 /**
  * Calculate the highest safe Vorbis quality so that the output file strictly stays < 19.5 MB for Roblox

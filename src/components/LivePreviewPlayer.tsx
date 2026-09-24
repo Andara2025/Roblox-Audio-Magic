@@ -104,7 +104,11 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
   useEffect(() => {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-    const currentRate = previewSpeedMode === 'normal' ? 1.0 : settings.speedUp;
+    const detuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
+    const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+    const currentRate = previewSpeedMode === 'normal'
+      ? 1.0
+      : settings.speedUp * (settings.pitchMode === 'resample' ? detuneRatio : 1.0);
 
     // 1. Update Speed / PlaybackRate
     if (sourceNodeRef.current) {
@@ -154,7 +158,11 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     source.buffer = buffer;
 
     const currentMode = explicitSpeedMode ?? previewSpeedModeRef.current;
-    const currentRate = currentMode === 'normal' ? 1.0 : settingsRef.current.speedUp;
+    const detuneCents = settingsRef.current.antiCopyrightStealth ? (settingsRef.current.pitchDetuneCents ?? 45) : 0;
+    const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+    const currentRate = currentMode === 'normal'
+      ? 1.0
+      : settingsRef.current.speedUp * (settingsRef.current.pitchMode === 'resample' ? detuneRatio : 1.0);
     source.playbackRate.value = currentRate;
 
     // Gain node (Volume Booster / Padder)
@@ -318,10 +326,10 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
                   ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/30 font-extrabold ring-1 ring-amber-400'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
               }`}
-              title="Dengarkan di kecepatan normal 1.0x agar kualitas Reverb dan Gain mudah dinilai"
+              title="Dengarkan simulasi audio saat diputar kembali normal di dalam game Roblox (1.0x)"
             >
               <Volume2 className="w-4 h-4" />
-              <span>1.0x Normal (Audisi Gain/Reverb)</span>
+              <span>1.0x Normal (Simulasi Playback Roblox)</span>
             </button>
 
             <button
@@ -333,10 +341,10 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
                   ? 'bg-red-500 text-white shadow-md shadow-red-500/30 font-extrabold ring-1 ring-red-400'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
               }`}
-              title="Dengarkan simulasi hasil dipercepat Roblox (Chipmunk/Nightcore)"
+              title="Dengarkan file ekspor dipercepat sebelum PlaybackSpeed diterapkan"
             >
               <Disc3 className="w-4 h-4" />
-              <span>{settings.speedUp}x Dipercepat Roblox</span>
+              <span>{settings.speedUp}x Ekspor Roblox (Speed-Up)</span>
             </button>
           </div>
         </div>

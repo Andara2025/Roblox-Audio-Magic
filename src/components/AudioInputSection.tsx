@@ -175,11 +175,11 @@ export const AudioInputSection: React.FC<AudioInputSectionProps> = ({
               type="button"
               id="open-split-modal-btn"
               onClick={() => splitFileInputRef.current?.click()}
-              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800/90 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/80 hover:border-zinc-600 transition flex items-center justify-center gap-2 active:scale-95 shadow-sm"
-              title="Pilih file lagu kompilasi/mix panjang untuk dipotong otomatis dengan timestamp"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800/90 hover:bg-zinc-750 text-zinc-200 border border-amber-500/30 hover:border-amber-500/60 transition flex items-center justify-center gap-2 active:scale-95 shadow-sm"
+              title="Potong intro lagu atau split file kompilasi panjang dengan timestamp"
             >
               <Scissors className="w-4 h-4 text-amber-400" />
-              <span>Split Audio Panjang (Timestamp)</span>
+              <span>✂️ Potong / Split Audio (Timestamp)</span>
             </button>
             <input
               ref={splitFileInputRef}

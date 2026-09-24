@@ -36,18 +36,21 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [volume, setVolume] = useState(0.85);
   const [isMuted, setIsMuted] = useState(false);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [isRobloxSimulated, setIsRobloxSimulated] = useState(false);
+  const [isRobloxSimulated, setIsRobloxSimulated] = useState(true);
+
+  // Compute exact Roblox playback speed factoring in pitch detune if stealth mode is active
+  const detuneCents = item.settings.antiCopyrightStealth ? (item.settings.pitchDetuneCents ?? 45) : 0;
+  const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+  const totalSpeed = Math.max(0.1, item.settings.speedUp * (item.settings.pitchMode === 'resample' ? detuneRatio : 1.0));
+  const effectivePlaybackSpeed = Number((1 / totalSpeed).toFixed(4));
 
   // Helper to re-apply rate and pitch settings to HTML5 audio element
   const applyAudioRateAndPitch = () => {
     if (!audioRef.current) return;
     const el = audioRef.current as any;
     if (type === 'processed' && isRobloxSimulated) {
-      el.playbackRate = item.settings.robloxPlaybackSpeed;
-      // CRITICAL: Disable browser's internal pitch-shifting time-stretch algorithm!
-      // Browsers use an internal WSOLA time-stretcher that severely degrades/muffles
-      // audio when slowed down if preservesPitch is true. Setting it to false allows
-      // genuine resampling pitch drop (exactly like Roblox Sound.PlaybackSpeed).
+      el.playbackRate = effectivePlaybackSpeed;
+      // Disable browser's internal pitch-stretcher to allow true resampling drop
       el.preservesPitch = false;
       el.mozPreservesPitch = false;
       el.webkitPreservesPitch = false;
@@ -62,7 +65,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   // Apply playbackRate and pitch preservation whenever source or simulation mode changes
   useEffect(() => {
     applyAudioRateAndPitch();
-  }, [type, isRobloxSimulated, item.settings.robloxPlaybackSpeed]);
+  }, [type, isRobloxSimulated, effectivePlaybackSpeed]);
 
   // Update audio source when item or type changes
   useEffect(() => {
@@ -237,6 +240,11 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         | FadeOut: {item.settings.fadeOutDuration}s
                       </span>
                     )}
+                    {item.settings.antiCopyrightStealth && (
+                      <span className="ml-1 text-purple-300 font-medium">
+                        | Stealth (+{item.settings.pitchDetuneCents ?? 45}c • Haas 3D)
+                      </span>
+                    )}
                     {item.settings.reverbType !== 'none' && (
                       <span className="ml-1 text-cyan-300 capitalize">
                         | Reverb: {item.settings.reverbType}
@@ -295,16 +303,22 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsRobloxSimulated(!isRobloxSimulated)}
-                    className={`px-2.5 py-1 rounded-lg text-xs border transition flex items-center gap-1.5 active:scale-95 ${
+                    className={`px-3 py-1 rounded-lg text-xs border transition flex items-center gap-1.5 active:scale-95 ${
                       isRobloxSimulated
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-200 font-bold shadow-md shadow-amber-500/20'
-                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border-zinc-700'
+                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 font-bold shadow-md shadow-emerald-500/10 ring-1 ring-emerald-400'
+                        : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
                     }`}
-                    title="Simulasikan suara persis saat diputar di Roblox Studio dengan PlaybackSpeed (nada normal)"
+                    title="Simulasikan pemutaran audio di dalam Roblox Studio saat PlaybackSpeed diterapkan (pitch & tempo kembali normal 1.0x)"
                   >
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                    <span className="hidden sm:inline">Simulasi Roblox (Normal)</span>
-                    <span className="sm:hidden">Roblox</span>
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="hidden sm:inline">
+                      {isRobloxSimulated
+                        ? `Simulasi Playback Roblox (1.0x Normal • PBS ${effectivePlaybackSpeed})`
+                        : `Audio Mentah Dipercepat (${item.settings.speedUp}x)`}
+                    </span>
+                    <span className="sm:hidden">
+                      {isRobloxSimulated ? `Roblox 1.0x (${effectivePlaybackSpeed})` : 'Speed-Up'}
+                    </span>
                   </button>
                 )}
               </div>
