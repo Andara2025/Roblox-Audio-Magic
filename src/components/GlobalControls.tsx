@@ -143,6 +143,107 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
         </div>
       </div>
 
+      {/* 1-Click Quick Preset Selector Bar */}
+      <div className="mb-5 p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/90 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="text-xs font-bold text-zinc-200 tracking-wide">Preset Siap Pakai Roblox:</span>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={() =>
+              onChangeSettings({
+                ...settings,
+                speedUp: 2.326,
+                robloxPlaybackSpeed: 0.43,
+                amplifyDb: 5,
+                fadeInEnabled: true,
+                fadeInDuration: 2.0,
+                fadeOutEnabled: true,
+                fadeOutDuration: 3.0,
+                outputFormat: 'ogg',
+                oggQuality: 8,
+                reverbType: 'hall',
+                reverbMix: 0.25,
+                reverbDecay: 2.4,
+                preserveQuality: true,
+                autoFitRobloxLimit: true,
+              })
+            }
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
+              settings.amplifyDb === 5 &&
+              settings.reverbType === 'hall' &&
+              settings.fadeInEnabled &&
+              settings.fadeOutEnabled &&
+              (settings.oggQuality ?? 8) === 8 &&
+              settings.speedUp === 2.326
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-zinc-950 shadow-md shadow-amber-500/20 ring-1 ring-amber-300'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
+            }`}
+            title="Preset rekomendasi: +5dB Volume, Fade In 2s & Out 3s, OGG 256k, Concert Hall Reverb, Speed 2.326x"
+          >
+            <span>🔥 Roblox Concert Pro (+5dB • Fade • Concert Hall • 256k)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onChangeSettings({
+                ...settings,
+                speedUp: 2.326,
+                robloxPlaybackSpeed: 0.43,
+                amplifyDb: 5,
+                fadeInEnabled: true,
+                fadeInDuration: 2.0,
+                fadeOutEnabled: true,
+                fadeOutDuration: 3.0,
+                outputFormat: 'ogg',
+                oggQuality: 8,
+                reverbType: 'none',
+                preserveQuality: true,
+                autoFitRobloxLimit: true,
+              })
+            }
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
+              settings.reverbType === 'none' && settings.amplifyDb === 5 && settings.speedUp === 2.326
+                ? 'bg-zinc-700 text-white font-semibold'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+            }`}
+            title="Preset kering tanpa reverb: +5dB Volume, Fade In/Out, OGG 256k, Speed 2.326x"
+          >
+            <span>Roblox Clean (+5dB • Dry)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              onChangeSettings({
+                ...settings,
+                speedUp: 1.0,
+                robloxPlaybackSpeed: 1.0,
+                amplifyDb: 0,
+                fadeInEnabled: false,
+                fadeOutEnabled: false,
+                outputFormat: 'ogg',
+                oggQuality: 8,
+                reverbType: 'none',
+                preserveQuality: true,
+                autoFitRobloxLimit: true,
+              })
+            }
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
+              settings.speedUp === 1.0 && settings.amplifyDb === 0
+                ? 'bg-zinc-700 text-white font-semibold'
+                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+            }`}
+            title="Kembalikan ke setting standar: Speed asli 1.0x, 0dB gain, tanpa efek"
+          >
+            <span>Reset Normal (1.0x • 0dB)</span>
+          </button>
+        </div>
+      </div>
+
       {/* Bento Grid: 3 Responsive Columns */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Module 1: Speed-Up & PlaybackSpeed */}
@@ -368,39 +469,39 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                     <span>Pilihan Bitrate OGG:</span>
                   </span>
                   <span className="font-mono text-emerald-400 font-bold text-[11px]">
-                    {(settings.oggQuality ?? 7) === 7
-                      ? 'q7 • 224 kbps (Standar Emas Roblox)'
-                      : (settings.oggQuality ?? 7) === 6
+                    {(settings.oggQuality ?? 8) === 8
+                      ? 'q8 • 256 kbps (Rekomendasi Hi-Fi Studio)'
+                      : (settings.oggQuality ?? 8) === 7
+                      ? 'q7 • 224 kbps (Standar Seimbang)'
+                      : (settings.oggQuality ?? 8) === 9
+                      ? 'q9 • 320 kbps (Audiophile Max)'
+                      : (settings.oggQuality ?? 8) === 6
                       ? 'q6 • 192 kbps (Hemat Kuota)'
-                      : (settings.oggQuality ?? 7) === 8
-                      ? 'q8 • 256 kbps (Tinggi)'
-                      : (settings.oggQuality ?? 7) === 9
-                      ? 'q9 • 320 kbps (Studio Master)'
-                      : (settings.oggQuality ?? 7) === 5
+                      : (settings.oggQuality ?? 8) === 5
                       ? 'q5 • 160 kbps (Spotify Normal)'
-                      : 'q10 • 450 kbps (Max)'}
+                      : 'q10 • 450 kbps (Max Lossless-grade)'}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">
                   {[
                     { q: 6, label: '192k', desc: 'Hemat Kuota', size: '~2-3MB' },
-                    { q: 7, label: '224k', desc: 'Rekomendasi Emas', size: '~2.5-4MB', isPopular: true },
-                    { q: 8, label: '256k', desc: 'High Quality', size: '~3.5-5MB' },
-                    { q: 9, label: '320k', desc: 'Studio Master', size: '~4.5-6MB' },
+                    { q: 7, label: '224k', desc: 'Standar Bersih', size: '~2.5-3.5MB' },
+                    { q: 8, label: '256k', desc: 'Hi-Fi Studio', size: '~3-4.5MB', isPopular: true },
+                    { q: 9, label: '320k', desc: 'Ultra Jernih', size: '~4-5.5MB' },
                   ].map((item) => (
                     <button
                       key={item.q}
                       type="button"
                       onClick={() => onChangeSettings({ ...settings, oggQuality: item.q })}
                       className={`p-1.5 rounded-lg text-center transition flex flex-col items-center justify-center relative ${
-                        (settings.oggQuality ?? 7) === item.q
+                        (settings.oggQuality ?? 8) === item.q
                           ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/60 ring-1 ring-emerald-500/40 shadow-sm'
                           : 'bg-zinc-800 text-zinc-400 border border-zinc-700/60 hover:text-zinc-200'
                       }`}
                     >
                       {item.isPopular && (
                         <span className="absolute -top-2 right-1 text-[8px] font-extrabold px-1 py-0.2 rounded bg-amber-500 text-zinc-950 shadow-sm">
-                          TOP
+                          REKOMENDASI
                         </span>
                       )}
                       <span className="text-[11px] font-mono font-bold">{item.label}</span>

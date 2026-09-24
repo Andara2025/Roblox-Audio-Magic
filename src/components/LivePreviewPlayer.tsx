@@ -10,9 +10,7 @@ import {
   Volume2,
   Sparkles,
   Disc3,
-  RotateCcw,
   Radio,
-  SlidersHorizontal,
 } from 'lucide-react';
 
 interface LivePreviewPlayerProps {
@@ -29,7 +27,6 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   // Default: Normal speed (1.0x). User can switch to speedup mode anytime.
   const [previewSpeedMode, setPreviewSpeedMode] = useState<'normal' | 'speedup'>('normal');
-  const [remasterBypass, setRemasterBypass] = useState<boolean>(false); // A/B test without remaster
   const [reverbBypass, setReverbBypass] = useState<boolean>(false); // A/B test without reverb
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
@@ -37,11 +34,6 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
   // Web Audio Graph References for real-time live manipulation
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const gainNodeRef = useRef<GainNode | null>(null);
-  const bassShelfRef = useRef<BiquadFilterNode | null>(null);
-  const midCutRef = useRef<BiquadFilterNode | null>(null);
-  const presencePeakRef = useRef<BiquadFilterNode | null>(null);
-  const highAirRef = useRef<BiquadFilterNode | null>(null);
-  const compressorRef = useRef<DynamicsCompressorNode | null>(null);
   const convolverRef = useRef<ConvolverNode | null>(null);
   const dryGainRef = useRef<GainNode | null>(null);
   const wetGainRef = useRef<GainNode | null>(null);
@@ -108,7 +100,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     }
   }, [selectedItemId]);
 
-  // Real-time parameter updates without stopping playback!
+  // Real-time parameter updates without stopping playback
   useEffect(() => {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
@@ -125,55 +117,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
       gainNodeRef.current.gain.setTargetAtTime(linearGain, now, 0.05);
     }
 
-    // 3. Update Remaster Nodes (EQ + Multi-Band Compressor)
-    const intensity = Math.min(Math.max(settings.remasterIntensity ?? 0.7, 0.1), 1.0);
-    const profile = remasterBypass ? 'none' : settings.remasterProfile || 'none';
-
-    if (
-      bassShelfRef.current &&
-      midCutRef.current &&
-      presencePeakRef.current &&
-      highAirRef.current &&
-      compressorRef.current
-    ) {
-      if (profile === 'none') {
-        bassShelfRef.current.gain.setTargetAtTime(0, now, 0.05);
-        midCutRef.current.gain.setTargetAtTime(0, now, 0.05);
-        presencePeakRef.current.gain.setTargetAtTime(0, now, 0.05);
-        highAirRef.current.gain.setTargetAtTime(0, now, 0.05);
-        compressorRef.current.threshold.setTargetAtTime(0, now, 0.05);
-      } else if (profile === 'clarity') {
-        bassShelfRef.current.gain.setTargetAtTime(2.5 * intensity, now, 0.05);
-        midCutRef.current.gain.setTargetAtTime(-3.0 * intensity, now, 0.05);
-        presencePeakRef.current.gain.setTargetAtTime(3.5 * intensity, now, 0.05);
-        highAirRef.current.gain.setTargetAtTime(3.0 * intensity, now, 0.05);
-        compressorRef.current.threshold.setTargetAtTime(-18 * intensity, now, 0.05);
-        compressorRef.current.ratio.setTargetAtTime(4, now, 0.05);
-      } else if (profile === 'bass_punch') {
-        bassShelfRef.current.gain.setTargetAtTime(6.0 * intensity, now, 0.05);
-        midCutRef.current.gain.setTargetAtTime(-2.5 * intensity, now, 0.05);
-        presencePeakRef.current.gain.setTargetAtTime(1.5 * intensity, now, 0.05);
-        highAirRef.current.gain.setTargetAtTime(2.0 * intensity, now, 0.05);
-        compressorRef.current.threshold.setTargetAtTime(-20 * intensity, now, 0.05);
-        compressorRef.current.ratio.setTargetAtTime(6, now, 0.05);
-      } else if (profile === 'vocal_air') {
-        bassShelfRef.current.gain.setTargetAtTime(1.0 * intensity, now, 0.05);
-        midCutRef.current.gain.setTargetAtTime(-3.5 * intensity, now, 0.05);
-        presencePeakRef.current.gain.setTargetAtTime(5.0 * intensity, now, 0.05);
-        highAirRef.current.gain.setTargetAtTime(5.0 * intensity, now, 0.05);
-        compressorRef.current.threshold.setTargetAtTime(-16 * intensity, now, 0.05);
-        compressorRef.current.ratio.setTargetAtTime(3, now, 0.05);
-      } else if (profile === 'loudness_war') {
-        bassShelfRef.current.gain.setTargetAtTime(4.0 * intensity, now, 0.05);
-        midCutRef.current.gain.setTargetAtTime(-2.0 * intensity, now, 0.05);
-        presencePeakRef.current.gain.setTargetAtTime(3.0 * intensity, now, 0.05);
-        highAirRef.current.gain.setTargetAtTime(3.5 * intensity, now, 0.05);
-        compressorRef.current.threshold.setTargetAtTime(-24 * intensity, now, 0.05);
-        compressorRef.current.ratio.setTargetAtTime(8, now, 0.05);
-      }
-    }
-
-    // 4. Update Reverb Dry/Wet Mix WITHOUT REDUCING DRY VOLUME!
+    // 3. Update Reverb Dry/Wet Mix WITHOUT REDUCING DRY VOLUME!
     // Dry signal always stays full (1.0) so audio never drops in volume when reverb is enabled.
     if (wetGainRef.current && dryGainRef.current) {
       if (reverbBypass || settings.reverbType === 'none' || settings.reverbMix <= 0.01) {
@@ -188,12 +132,9 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
   }, [
     settings.speedUp,
     settings.amplifyDb,
-    settings.remasterProfile,
-    settings.remasterIntensity,
     settings.reverbType,
     settings.reverbMix,
     previewSpeedMode,
-    remasterBypass,
     reverbBypass,
   ]);
 
@@ -221,85 +162,8 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     const linearGain = Math.pow(10, settingsRef.current.amplifyDb / 20);
     gainNode.gain.value = linearGain;
 
-    // Remastering filter chain
-    const bassShelf = ctx.createBiquadFilter();
-    bassShelf.type = 'lowshelf';
-    bassShelf.frequency.value = 105;
-
-    const midCut = ctx.createBiquadFilter();
-    midCut.type = 'peaking';
-    midCut.frequency.value = 400;
-    midCut.Q.value = 1.2;
-
-    const presencePeak = ctx.createBiquadFilter();
-    presencePeak.type = 'peaking';
-    presencePeak.frequency.value = 3200;
-    presencePeak.Q.value = 1.0;
-
-    const highAir = ctx.createBiquadFilter();
-    highAir.type = 'highshelf';
-    highAir.frequency.value = 9500;
-
-    const compressor = ctx.createDynamicsCompressor();
-
-    const intensity = Math.min(Math.max(settingsRef.current.remasterIntensity ?? 0.7, 0.1), 1.0);
-    const profile = remasterBypass ? 'none' : settingsRef.current.remasterProfile || 'none';
-
-    if (profile === 'none') {
-      bassShelf.gain.value = 0;
-      midCut.gain.value = 0;
-      presencePeak.gain.value = 0;
-      highAir.gain.value = 0;
-      compressor.threshold.value = 0;
-    } else if (profile === 'clarity') {
-      bassShelf.gain.value = 2.5 * intensity;
-      midCut.gain.value = -3.0 * intensity;
-      presencePeak.gain.value = 3.5 * intensity;
-      highAir.gain.value = 3.0 * intensity;
-      compressor.threshold.value = -18 * intensity;
-      compressor.knee.value = 12;
-      compressor.ratio.value = 4;
-      compressor.attack.value = 0.008;
-      compressor.release.value = 0.15;
-    } else if (profile === 'bass_punch') {
-      bassShelf.gain.value = 6.0 * intensity;
-      midCut.gain.value = -2.5 * intensity;
-      presencePeak.gain.value = 1.5 * intensity;
-      highAir.gain.value = 2.0 * intensity;
-      compressor.threshold.value = -20 * intensity;
-      compressor.knee.value = 10;
-      compressor.ratio.value = 6;
-      compressor.attack.value = 0.015;
-      compressor.release.value = 0.12;
-    } else if (profile === 'vocal_air') {
-      bassShelf.gain.value = 1.0 * intensity;
-      midCut.gain.value = -3.5 * intensity;
-      presencePeak.gain.value = 5.0 * intensity;
-      highAir.gain.value = 5.0 * intensity;
-      compressor.threshold.value = -16 * intensity;
-      compressor.knee.value = 15;
-      compressor.ratio.value = 3;
-      compressor.attack.value = 0.005;
-      compressor.release.value = 0.2;
-    } else if (profile === 'loudness_war') {
-      bassShelf.gain.value = 4.0 * intensity;
-      midCut.gain.value = -2.0 * intensity;
-      presencePeak.gain.value = 3.0 * intensity;
-      highAir.gain.value = 3.5 * intensity;
-      compressor.threshold.value = -24 * intensity;
-      compressor.knee.value = 8;
-      compressor.ratio.value = 8;
-      compressor.attack.value = 0.003;
-      compressor.release.value = 0.1;
-    }
-
-    // Connect Remaster chain: source -> gain -> bass -> mid -> presence -> air -> compressor
+    // Connect source to gain
     source.connect(gainNode);
-    gainNode.connect(bassShelf);
-    bassShelf.connect(midCut);
-    midCut.connect(presencePeak);
-    presencePeak.connect(highAir);
-    highAir.connect(compressor);
 
     // Reverb convolution routing
     const dryGain = ctx.createGain();
@@ -313,9 +177,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
       1.0
     );
 
-    // ZERO VOLUME DROP FIX:
-    // dryGain is always 1.0 so the main sound stays at 100% volume.
-    // wetGain adds the reverb atmosphere cleanly on top.
+    // ZERO VOLUME DROP: dryGain is always 1.0 so the main sound stays at 100% volume
     dryGain.gain.value = 1.0;
 
     if (impulse && !reverbBypass && settingsRef.current.reverbMix > 0.01) {
@@ -324,26 +186,21 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
       const wetAmount = Math.min(Math.max(settingsRef.current.reverbMix, 0), 1);
       wetGain.gain.value = wetAmount * 0.75;
 
-      compressor.connect(dryGain);
-      compressor.connect(convolver);
+      gainNode.connect(dryGain);
+      gainNode.connect(convolver);
       convolver.connect(wetGain);
 
       dryGain.connect(ctx.destination);
       wetGain.connect(ctx.destination);
     } else {
       wetGain.gain.value = 0;
-      compressor.connect(dryGain);
+      gainNode.connect(dryGain);
       dryGain.connect(ctx.destination);
     }
 
     // Save refs for real-time live changes
     sourceNodeRef.current = source;
     gainNodeRef.current = gainNode;
-    bassShelfRef.current = bassShelf;
-    midCutRef.current = midCut;
-    presencePeakRef.current = presencePeak;
-    highAirRef.current = highAir;
-    compressorRef.current = compressor;
     convolverRef.current = convolver;
     dryGainRef.current = dryGain;
     wetGainRef.current = wetGain;
@@ -356,7 +213,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     setIsPlaying(true);
 
     source.onended = () => {
-      // If user paused intentionally, don't reset to 0!
+      // If user paused intentionally, don't reset to 0
       if (isStoppingIntentionallyRef.current) return;
       setIsPlaying(false);
       pausedAtRef.current = 0;
@@ -379,11 +236,9 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
 
   const handleTogglePlay = () => {
     if (isPlaying) {
-      // PAUSE: record current position and stop playback node
       pausedAtRef.current = currentTime;
       stopAudio(true);
     } else {
-      // RESUME: play from recorded paused position
       playLiveAudio(pausedAtRef.current);
     }
   };
@@ -394,7 +249,6 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
 
     const currentOffset = pausedAtRef.current;
     if (isPlaying) {
-      // Re-launch audio playback node cleanly at the new playback rate
       playLiveAudio(currentOffset, newMode);
     }
   };
@@ -447,7 +301,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
               </h3>
             </div>
             <p className="text-xs text-zinc-300 mt-0.5">
-              Dengarkan langsung karakter lagu saat Anda mengubah <strong>Gain (+dB)</strong>, <strong>Remaster</strong>, dan <strong>Reverb</strong> tanpa volume drop.
+              Dengarkan langsung audio asli jernih saat Anda mengatur <strong>Gain (+dB)</strong> dan <strong>Reverb</strong> tanpa penurunan volume.
             </p>
           </div>
         </div>
@@ -464,10 +318,10 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
                   ? 'bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/30 font-extrabold ring-1 ring-amber-400'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
               }`}
-              title="Dengarkan di kecepatan normal 1.0x agar kualitas EQ, Reverb, dan Gain mudah dinilai"
+              title="Dengarkan di kecepatan normal 1.0x agar kualitas Reverb dan Gain mudah dinilai"
             >
               <Volume2 className="w-4 h-4" />
-              <span>1.0x Normal (Audisi EQ/Gain)</span>
+              <span>1.0x Normal (Audisi Gain/Reverb)</span>
             </button>
 
             <button
@@ -488,8 +342,8 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
         </div>
       </div>
 
-      {/* Real-time DSP Active Inspector & A/B Bypass Switches */}
-      <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Real-time DSP Active Inspector & Controls */}
+      <div className="mt-3.5 grid grid-cols-1 md:grid-cols-2 gap-3">
         {/* 1. Track Selection & Gain Monitor */}
         <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs mb-1.5">
@@ -520,44 +374,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
           </div>
         </div>
 
-        {/* 2. Remaster Profile & A/B Bypass */}
-        <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="text-zinc-400 font-medium flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Remaster Status:</span>
-            </span>
-            <span className="font-bold text-amber-300 text-xs">
-              {remasterBypass
-                ? 'Bypass (Mati)'
-                : settings.remasterProfile === 'clarity'
-                ? '✨ Studio Master'
-                : settings.remasterProfile === 'bass_punch'
-                ? '🔊 Bass Punch'
-                : settings.remasterProfile === 'vocal_air'
-                ? '🎙️ Vocal Air'
-                : settings.remasterProfile === 'loudness_war'
-                ? '⚡ Max Loudness'
-                : 'Biasa (Off)'}
-            </span>
-          </div>
-          <div className="flex items-center justify-between text-xs pt-1.5 border-t border-zinc-800/80">
-            <span className="text-zinc-500 text-[11px]">Bandingkan Suara A/B:</span>
-            <button
-              type="button"
-              onClick={() => setRemasterBypass((prev) => !prev)}
-              className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition ${
-                remasterBypass
-                  ? 'bg-zinc-800 text-zinc-400 border-zinc-700'
-                  : 'bg-amber-500/20 text-amber-300 border-amber-500/50'
-              }`}
-            >
-              {remasterBypass ? 'Tes: Suara Asli (Mati)' : 'Tes: Remaster Aktif'}
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Reverb Ambient & A/B Bypass (Zero volume drop guarantee) */}
+        {/* 2. Reverb Ambient & A/B Bypass (Zero volume drop guarantee) */}
         <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-zinc-400 font-medium flex items-center gap-1.5">

@@ -38,19 +38,30 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [isRobloxSimulated, setIsRobloxSimulated] = useState(false);
 
+  // Helper to re-apply rate and pitch settings to HTML5 audio element
+  const applyAudioRateAndPitch = () => {
+    if (!audioRef.current) return;
+    const el = audioRef.current as any;
+    if (type === 'processed' && isRobloxSimulated) {
+      el.playbackRate = item.settings.robloxPlaybackSpeed;
+      // CRITICAL: Disable browser's internal pitch-shifting time-stretch algorithm!
+      // Browsers use an internal WSOLA time-stretcher that severely degrades/muffles
+      // audio when slowed down if preservesPitch is true. Setting it to false allows
+      // genuine resampling pitch drop (exactly like Roblox Sound.PlaybackSpeed).
+      el.preservesPitch = false;
+      el.mozPreservesPitch = false;
+      el.webkitPreservesPitch = false;
+    } else {
+      el.playbackRate = 1.0;
+      el.preservesPitch = true;
+      el.mozPreservesPitch = true;
+      el.webkitPreservesPitch = true;
+    }
+  };
+
   // Apply playbackRate and pitch preservation whenever source or simulation mode changes
   useEffect(() => {
-    if (audioRef.current) {
-      if (type === 'processed' && isRobloxSimulated) {
-        audioRef.current.playbackRate = item.settings.robloxPlaybackSpeed;
-        (audioRef.current as any).preservesPitch = false;
-        (audioRef.current as any).mozPreservesPitch = false;
-        (audioRef.current as any).webkitPreservesPitch = false;
-      } else {
-        audioRef.current.playbackRate = 1.0;
-        (audioRef.current as any).preservesPitch = true;
-      }
-    }
+    applyAudioRateAndPitch();
   }, [type, isRobloxSimulated, item.settings.robloxPlaybackSpeed]);
 
   // Update audio source when item or type changes
@@ -153,6 +164,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
             }}
             onLoadedMetadata={() => {
               if (audioRef.current) setDuration(audioRef.current.duration);
+              applyAudioRateAndPitch();
             }}
             onEnded={() => setIsPlaying(false)}
           />
@@ -230,17 +242,6 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         | Reverb: {item.settings.reverbType}
                       </span>
                     )}
-                    {item.settings.remasterProfile && item.settings.remasterProfile !== 'none' && (
-                      <span className="ml-1 text-amber-300 font-semibold">
-                        | Remaster: {item.settings.remasterProfile === 'clarity'
-                          ? 'Studio Master'
-                          : item.settings.remasterProfile === 'bass_punch'
-                          ? 'Bass Punch'
-                          : item.settings.remasterProfile === 'vocal_air'
-                          ? 'Vocal Air'
-                          : 'Max Loudness'}
-                      </span>
-                    )}
                     {item.processedSize && (
                       <span className="ml-1 font-mono">
                         | Size:{' '}
@@ -258,7 +259,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
               </div>
             </div>
 
-            {/* Quick A/B Switch (Sebelum vs Sesudah Remaster) and Roblox Simulation button */}
+            {/* Quick A/B Switch (Sebelum vs Sesudah Proses) and Roblox Simulation button */}
             {item.status === 'ready' && (
               <div className="flex items-center gap-1.5 shrink-0 ml-1 sm:ml-2">
                 {/* Dedicated Before/After Segmented Toggle */}
@@ -271,7 +272,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         ? 'bg-cyan-500 text-zinc-950 font-bold shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
-                    title="Dengar audio asli (Sebelum Remaster)"
+                    title="Dengar audio asli (Sebelum Diproses)"
                   >
                     <span>Sebelum</span>
                   </button>
@@ -283,7 +284,7 @@ export const AudioPlayerBar: React.FC<AudioPlayerBarProps> = ({
                         ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white font-bold shadow-sm'
                         : 'text-zinc-400 hover:text-zinc-200'
                     }`}
-                    title="Dengar audio hasil (Sesudah Remaster & Efek)"
+                    title="Dengar audio hasil (Sesudah Diproses)"
                   >
                     <Sparkles className="w-3 h-3 text-amber-300" />
                     <span>Sesudah</span>

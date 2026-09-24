@@ -141,7 +141,7 @@ export const AudioInputSection: React.FC<AudioInputSectionProps> = ({
             {isDragging ? 'Lepaskan File di Sini' : 'Tarik & Letakkan File Audio ke Sini'}
           </h3>
           <p className="text-xs text-zinc-400 mt-1">
-            Mendukung satu atau banyak file sekaligus untuk percepatan & konversi batch
+            Mendukung batch upload. Gambar album cover besar akan otomatis dihapus/dibersihkan agar file ringan & lolos limit Roblox.
           </p>
 
           {/* Supported Format Tags */}

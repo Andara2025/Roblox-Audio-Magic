@@ -344,21 +344,6 @@ export const QueueList: React.FC<QueueListProps> = ({
                           Reverb: {item.settings.reverbType}
                         </span>
                       )}
-
-                      {item.settings.remasterProfile && item.settings.remasterProfile !== 'none' && (
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
-                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
-                          <span>
-                            {item.settings.remasterProfile === 'clarity'
-                              ? 'Master: Studio'
-                              : item.settings.remasterProfile === 'bass_punch'
-                              ? 'Master: Bass'
-                              : item.settings.remasterProfile === 'vocal_air'
-                              ? 'Master: Vocal'
-                              : 'Master: Max'}
-                          </span>
-                        </span>
-                      )}
                     </div>
                   </div>
                 </div>
@@ -396,7 +381,7 @@ export const QueueList: React.FC<QueueListProps> = ({
                           ? 'bg-cyan-500 text-zinc-950 font-bold shadow-md shadow-cyan-500/30'
                           : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80'
                       }`}
-                      title="Dengar audio asli (Sebelum Remaster & Percepatan)"
+                      title="Dengar audio asli (Sebelum Percepatan & Efek)"
                     >
                       {isPlayingThis && activePlayingType === 'original' ? (
                         <Pause className="w-3.5 h-3.5 fill-current" />
@@ -406,7 +391,7 @@ export const QueueList: React.FC<QueueListProps> = ({
                       <span>Asli</span>
                     </button>
 
-                    {/* Play Processed / Remastered (Sesudah) */}
+                    {/* Play Processed (Sesudah) */}
                     {item.status === 'ready' && (
                       <button
                         type="button"
@@ -416,14 +401,14 @@ export const QueueList: React.FC<QueueListProps> = ({
                             ? 'bg-gradient-to-r from-red-500 to-amber-500 text-white font-bold shadow-md shadow-red-500/30'
                             : 'text-amber-300 hover:text-amber-200 hover:bg-amber-500/10'
                         }`}
-                        title="Dengar hasil Remaster & Percepatan"
+                        title="Dengar hasil proses & percepatan"
                       >
                         {isPlayingThis && activePlayingType === 'processed' ? (
                           <Pause className="w-3.5 h-3.5 fill-current" />
                         ) : (
                           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                         )}
-                        <span>Hasil Remaster</span>
+                        <span>Hasil Proses</span>
                       </button>
                     )}
                   </div>
@@ -564,7 +549,7 @@ export const QueueList: React.FC<QueueListProps> = ({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Speed Override */}
                     <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs">
                       <div className="flex justify-between text-zinc-400 mb-1">
@@ -613,42 +598,6 @@ export const QueueList: React.FC<QueueListProps> = ({
                         }
                         className="w-full h-1.5 bg-zinc-800 rounded appearance-none cursor-pointer"
                       />
-                    </div>
-
-                    {/* Remaster Override */}
-                    <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-xs flex flex-col justify-between">
-                      <div>
-                        <div className="flex justify-between text-zinc-400 mb-1">
-                          <span className="flex items-center gap-1 text-amber-400 font-semibold">
-                            <Sparkles className="w-3 h-3" />
-                            <span>Remaster:</span>
-                          </span>
-                          <span className="font-mono text-amber-300 font-bold text-[10px]">
-                            {item.settings.remasterProfile && item.settings.remasterProfile !== 'none'
-                              ? item.settings.remasterProfile
-                              : 'Off'}
-                          </span>
-                        </div>
-                        <select
-                          value={item.settings.remasterProfile || 'none'}
-                          onChange={(e) =>
-                            onUpdateItemSettings(item.id, {
-                              ...item.settings,
-                              remasterProfile: e.target.value as any,
-                            })
-                          }
-                          className="w-full py-1 px-1.5 rounded bg-zinc-800 border border-zinc-700 text-[11px] text-zinc-200 focus:outline-none focus:border-amber-500"
-                        >
-                          <option value="none">Off (Asli)</option>
-                          <option value="clarity">✨ Studio Master (Jernih & Punch)</option>
-                          <option value="bass_punch">🔊 Bass Punch (Nendang)</option>
-                          <option value="vocal_air">🎙️ Vocal Air (Vokal Renyah)</option>
-                          <option value="loudness_war">⚡ Max Loudness (Komersial)</option>
-                        </select>
-                      </div>
-                      <div className="text-[9px] text-zinc-500 mt-1">
-                        Keras & bening tanpa nambah ukuran file
-                      </div>
                     </div>
 
                     {/* Fade In & Out Controls */}

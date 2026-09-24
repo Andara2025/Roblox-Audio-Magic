@@ -3,329 +3,165 @@ import path from "path";
 import { spawn } from "child_process";
 import { createServer as createViteServer } from "vite";
 
-function runFfmpeg(inputBuffer: Buffer, args: string[]): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const ffmpeg = spawn("ffmpeg", args);
-    const chunks: Buffer[] = [];
-    let errOutput = "";
-
-    ffmpeg.stdout.on("data", (chunk: Buffer) => {
-      chunks.push(chunk);
-    });
-
-    ffmpeg.stderr.on("data", (chunk) => {
-      errOutput += chunk.toString();
-    });
-
-    ffmpeg.on("error", (err) => {
-      reject(new Error("FFmpeg spawn error: " + err.message));
-    });
-
-    ffmpeg.on("close", (code) => {
-      if (code !== 0) {
-        reject(new Error("FFmpeg exited with code " + code + ": " + errOutput));
-      } else {
-        resolve(Buffer.concat(chunks));
-      }
-    });
-
-    ffmpeg.stdin.write(inputBuffer);
-    ffmpeg.stdin.end();
-  });
-}
-
-// Audio Conversion Handler (Roblox 20MB Guard & Auto-Fit Bitrate)
-async function handleAudioConversion(inputBuffer: Buffer, query: any, res: express.Response) {
-  try {
-    const targetFormat = (query.format as string) || "ogg";
-    let quality = (query.quality as string) || "7"; // libvorbis quality (0-10)
-    let bitrate = (query.bitrate as string) || ""; // e.g. "224k", "192k", "256k", "320k"
-    const durationSec = parseFloat((query.duration as string) || "0");
-    const autoFitRoblox = (query.autoFit ?? "true") !== "false";
-
-    if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
-      return res.status(400).json({ error: "Data audio kosong atau format stream tidak valid" });
-    }
-
-    if (targetFormat === "ogg") {
-      // If autoFit is enabled and duration is known, calculate maximum safe bitrate
-      // Target safe ceiling: 18.5 MB so it never touches Roblox's strict 20 MB cap
-      if (autoFitRoblox && durationSec > 0) {
-        const maxSafeKbps = Math.floor((18.5 * 1024 * 8) / durationSec);
-        let requestedKbps = 224;
-        if (bitrate) {
-          const parsed = parseInt(bitrate.replace(/k/i, ""), 10);
-          if (!isNaN(parsed)) requestedKbps = parsed;
-        } else {
-          const qMap: Record<string, number> = { "5": 160, "6": 192, "7": 224, "8": 256, "9": 320, "10": 450 };
-          requestedKbps = qMap[quality] || 224;
-        }
-
-        if (requestedKbps > maxSafeKbps) {
-          const safeBitrate = Math.max(48, Math.min(requestedKbps, maxSafeKbps));
-          bitrate = `${safeBitrate}k`;
-        }
-      }
-
-      const buildArgs = (br: string, q: string) => {
-        const args = ["-hide_banner", "-loglevel", "error", "-i", "pipe:0"];
-        if (br) {
-          args.push("-c:a", "libvorbis", "-b:a", br, "-f", "ogg", "pipe:1");
-        } else {
-          args.push("-c:a", "libvorbis", "-q:a", q, "-f", "ogg", "pipe:1");
-        }
-        return args;
-      };
-
-      let outBuffer = await runFfmpeg(inputBuffer, buildArgs(bitrate, quality));
-
-      // ROBLOX 20MB HARD CAP SAFETY NET:
-      // If the output exceeds 19.5 MB, re-encode with a calibrated lower bitrate
-      if (outBuffer.length > 19.5 * 1024 * 1024) {
-        const targetBytes = 18.2 * 1024 * 1024;
-        const effDuration = durationSec > 0 ? durationSec : Math.max(30, outBuffer.length / (224000 / 8));
-        const fallbackKbps = Math.max(48, Math.floor((targetBytes * 8) / (effDuration * 1000)));
-        console.warn(`[Roblox Guard] Output ${outBuffer.length} bytes exceeds threshold. Re-encoding at ${fallbackKbps}k...`);
-        outBuffer = await runFfmpeg(inputBuffer, buildArgs(`${fallbackKbps}k`, ""));
-      }
-
-      res.setHeader("Content-Type", "audio/ogg");
-      res.setHeader("Content-Disposition", 'attachment; filename="output.ogg"');
-      res.setHeader("X-Roblox-Safe", outBuffer.length <= 20 * 1024 * 1024 ? "true" : "false");
-      res.setHeader("X-Roblox-File-Size", outBuffer.length.toString());
-      return res.send(outBuffer);
-    }
-
-    if (targetFormat === "mp3") {
-      const mp3Args = ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-c:a", "libmp3lame", "-q:a", "2", "-f", "mp3", "pipe:1"];
-      const outBuffer = await runFfmpeg(inputBuffer, mp3Args);
-      res.setHeader("Content-Type", "audio/mpeg");
-      res.setHeader("Content-Disposition", 'attachment; filename="output.mp3"');
-      return res.send(outBuffer);
-    }
-
-    // WAV format
-    const wavArgs = ["-hide_banner", "-loglevel", "error", "-i", "pipe:0", "-f", "wav", "pipe:1"];
-    const outBuffer = await runFfmpeg(inputBuffer, wavArgs);
-    res.setHeader("Content-Type", "audio/wav");
-    res.setHeader("Content-Disposition", 'attachment; filename="output.wav"');
-    return res.send(outBuffer);
-  } catch (err: any) {
-    console.error("Audio conversion error:", err);
-    return res.status(500).json({ error: "Gagal mengonversi audio: " + err.message });
-  }
-}
-
-// Audio Decoding Handler (Universal Tag-Stripped Studio Decode)
-async function handleAudioDecoding(inputBuffer: Buffer, res: express.Response) {
-  try {
-    if (!Buffer.isBuffer(inputBuffer) || inputBuffer.length === 0) {
-      return res.status(400).json({ error: "Data audio kosong atau format stream tidak valid" });
-    }
-
-    // Strip video/image cover art, strip corrupt metadata tags, encode to pristine 320kbps MP3
-    // This guarantees the HTTP response stays well below Cloud Run's 32MB limit while preserving 100% fidelity
-    const decodeArgs = [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-i",
-      "pipe:0",
-      "-vn", // strip video/image stream (crucial for MP3 with embedded covers)
-      "-map_metadata",
-      "-1", // strip corrupt metadata blocks
-      "-c:a",
-      "libmp3lame",
-      "-b:a",
-      "320k",
-      "-ar",
-      "44100",
-      "-ac",
-      "2",
-      "-f",
-      "mp3",
-      "pipe:1",
-    ];
-
-    const outBuffer = await runFfmpeg(inputBuffer, decodeArgs);
-    res.setHeader("Content-Type", "audio/mpeg");
-    res.setHeader("Content-Disposition", 'inline; filename="decoded.mp3"');
-    return res.send(outBuffer);
-  } catch (err: any) {
-    console.error("Audio decode error:", err);
-    return res.status(500).json({ error: "Gagal mendecode audio: " + err.message });
-  }
-}
-
-// In-Memory Session Store for Chunked Ingress (bypasses Cloud Run 32MB limit)
-interface ChunkSession {
-  chunks: Map<number, Buffer>;
-  totalChunks: number;
-  receivedBytes: number;
-  createdAt: number;
-}
-const chunkSessions = new Map<string, ChunkSession>();
-
-// Cleanup stale sessions older than 5 minutes
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of chunkSessions.entries()) {
-    if (now - session.createdAt > 5 * 60 * 1000) {
-      chunkSessions.delete(id);
-    }
-  }
-}, 60 * 1000);
-
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // API Route: Health check
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  // API Route: Universal Audio Decoder (Direct single request for files < 20MB)
-  app.post(
-    "/api/audio/decode",
-    express.raw({ type: () => true, limit: "30mb" }),
-    async (req, res) => {
-      return await handleAudioDecoding(req.body as Buffer, res);
-    }
-  );
-
-  // API Route: Universal Audio Decoder (Chunked upload for large files)
-  app.post(
-    "/api/audio/decode/chunk",
-    express.raw({ type: () => true, limit: "30mb" }),
-    async (req, res) => {
-      try {
-        const sessionId = req.query.sessionId as string;
-        const chunkIndex = parseInt(req.query.chunkIndex as string, 10);
-        const totalChunks = parseInt(req.query.totalChunks as string, 10);
-
-        if (!sessionId || isNaN(chunkIndex) || isNaN(totalChunks) || totalChunks <= 0) {
-          return res.status(400).json({ error: "Parameter chunk tidak lengkap" });
-        }
-
-        if (!Buffer.isBuffer(req.body)) {
-          return res.status(400).json({ error: "Data chunk tidak valid" });
-        }
-
-        let session = chunkSessions.get(sessionId);
-        if (!session) {
-          session = {
-            chunks: new Map(),
-            totalChunks,
-            receivedBytes: 0,
-            createdAt: Date.now(),
-          };
-          chunkSessions.set(sessionId, session);
-        }
-
-        session.chunks.set(chunkIndex, req.body);
-        session.receivedBytes += req.body.length;
-
-        if (session.chunks.size < totalChunks) {
-          return res.json({
-            status: "chunk_received",
-            chunkIndex,
-            totalChunks,
-            receivedChunks: session.chunks.size,
-          });
-        }
-
-        // All chunks received, reassemble in order
-        const ordered: Buffer[] = [];
-        for (let i = 0; i < totalChunks; i++) {
-          const b = session.chunks.get(i);
-          if (!b) {
-            chunkSessions.delete(sessionId);
-            return res.status(400).json({ error: `Chunk index ${i} hilang` });
-          }
-          ordered.push(b);
-        }
-        chunkSessions.delete(sessionId);
-
-        const fullBuffer = Buffer.concat(ordered);
-        return await handleAudioDecoding(fullBuffer, res);
-      } catch (err: any) {
-        console.error("Chunk decode error:", err);
-        return res.status(500).json({ error: "Gagal memproses chunk decode: " + err.message });
-      }
-    }
-  );
-
-  // API Route: Convert Audio with Roblox 20MB Guard (Direct single request for files < 20MB)
+  // API Route: Convert Audio (e.g. WAV -> OGG Vorbis for Roblox)
+  // Strips any attached cover art/video stream (-vn -sn) to keep file lightweight and avoid encoder failure
   app.post(
     "/api/audio/convert",
-    express.raw({ type: () => true, limit: "30mb" }),
-    async (req, res) => {
-      return await handleAudioConversion(req.body as Buffer, req.query, res);
+    express.raw({ type: ["audio/*", "application/octet-stream"], limit: "150mb" }),
+    (req, res) => {
+      const targetFormat = (req.query.format as string) || "ogg";
+      const quality = (req.query.quality as string) || "8"; // default 8 (256kbps)
+      const bitrate = (req.query.bitrate as string) || ""; // e.g. "256k", "320k", "224k"
+
+      if (!req.body || (req.body as Buffer).length === 0) {
+        return res.status(400).json({ error: "Data audio kosong" });
+      }
+
+      const ffmpegArgs = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-vn", // Drop embedded album art / thumbnail video stream
+        "-sn", // Drop subtitle streams
+        "-map_metadata",
+        "-1", // Clear heavy ID3 tags and embedded images
+      ];
+
+      if (targetFormat === "ogg") {
+        if (bitrate) {
+          ffmpegArgs.push("-c:a", "libvorbis", "-b:a", bitrate, "-f", "ogg", "pipe:1");
+        } else {
+          ffmpegArgs.push("-c:a", "libvorbis", "-q:a", quality, "-f", "ogg", "pipe:1");
+        }
+        res.setHeader("Content-Type", "audio/ogg");
+        res.setHeader("Content-Disposition", 'attachment; filename="output.ogg"');
+      } else if (targetFormat === "mp3") {
+        ffmpegArgs.push("-c:a", "libmp3lame", "-q:a", "2", "-f", "mp3", "pipe:1");
+        res.setHeader("Content-Type", "audio/mpeg");
+        res.setHeader("Content-Disposition", 'attachment; filename="output.mp3"');
+      } else {
+        ffmpegArgs.push("-f", "wav", "pipe:1");
+        res.setHeader("Content-Type", "audio/wav");
+        res.setHeader("Content-Disposition", 'attachment; filename="output.wav"');
+      }
+
+      const ffmpeg = spawn("ffmpeg", ffmpegArgs);
+
+      ffmpeg.stdin.on("error", (err) => {
+        console.warn("FFmpeg convert stdin error:", err.message);
+      });
+
+      ffmpeg.stdin.write(req.body);
+      ffmpeg.stdin.end();
+
+      ffmpeg.stdout.pipe(res);
+
+      let errOutput = "";
+      ffmpeg.stderr.on("data", (chunk) => {
+        errOutput += chunk.toString();
+      });
+
+      ffmpeg.on("error", (err) => {
+        console.error("FFmpeg spawn error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Gagal menjalankan konversi audio: " + err.message });
+        }
+      });
+
+      ffmpeg.on("close", (code) => {
+        if (code !== 0 && !res.headersSent) {
+          console.error("FFmpeg exited with code", code, errOutput);
+          res.status(500).json({ error: "Gagal mengonversi audio: " + errOutput });
+        }
+      });
     }
   );
 
-  // API Route: Convert Audio with Roblox 20MB Guard (Chunked upload for files >= 15MB or fallback)
+  // API Route: Strip heavy cover art / video and extract clean PCM WAV
+  // Solves browser decodeAudioData crash on files with large embedded cover art (APIC/ID3)
   app.post(
-    "/api/audio/convert/chunk",
-    express.raw({ type: () => true, limit: "30mb" }),
-    async (req, res) => {
-      try {
-        const sessionId = req.query.sessionId as string;
-        const chunkIndex = parseInt(req.query.chunkIndex as string, 10);
-        const totalChunks = parseInt(req.query.totalChunks as string, 10);
-
-        if (!sessionId || isNaN(chunkIndex) || isNaN(totalChunks) || totalChunks <= 0) {
-          return res.status(400).json({ error: "Parameter chunk tidak lengkap" });
-        }
-
-        if (!Buffer.isBuffer(req.body)) {
-          return res.status(400).json({ error: "Data chunk tidak valid" });
-        }
-
-        let session = chunkSessions.get(sessionId);
-        if (!session) {
-          session = {
-            chunks: new Map(),
-            totalChunks,
-            receivedBytes: 0,
-            createdAt: Date.now(),
-          };
-          chunkSessions.set(sessionId, session);
-        }
-
-        session.chunks.set(chunkIndex, req.body);
-        session.receivedBytes += req.body.length;
-
-        if (session.chunks.size < totalChunks) {
-          return res.json({
-            status: "chunk_received",
-            chunkIndex,
-            totalChunks,
-            receivedChunks: session.chunks.size,
-          });
-        }
-
-        // All chunks received, reassemble in order
-        const ordered: Buffer[] = [];
-        for (let i = 0; i < totalChunks; i++) {
-          const b = session.chunks.get(i);
-          if (!b) {
-            chunkSessions.delete(sessionId);
-            return res.status(400).json({ error: `Chunk index ${i} hilang` });
-          }
-          ordered.push(b);
-        }
-        chunkSessions.delete(sessionId);
-
-        const fullBuffer = Buffer.concat(ordered);
-        return await handleAudioConversion(fullBuffer, req.query, res);
-      } catch (err: any) {
-        console.error("Chunk convert error:", err);
-        return res.status(500).json({ error: "Gagal memproses chunk konversi: " + err.message });
+    "/api/audio/strip-cover",
+    express.raw({ type: ["audio/*", "application/octet-stream"], limit: "150mb" }),
+    (req, res) => {
+      if (!req.body || (req.body as Buffer).length === 0) {
+        return res.status(400).json({ error: "Data audio kosong" });
       }
+
+      const ffmpegArgs = [
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        "pipe:0",
+        "-vn", // Strip cover art image
+        "-sn",
+        "-map",
+        "0:a:0?", // Select primary audio stream only
+        "-f",
+        "wav",
+        "pipe:1",
+      ];
+
+      const ffmpeg = spawn("ffmpeg", ffmpegArgs);
+      const chunks: Buffer[] = [];
+
+      ffmpeg.stdin.on("error", (err) => {
+        console.warn("FFmpeg strip-cover stdin error:", err.message);
+      });
+
+      ffmpeg.stdout.on("data", (chunk) => {
+        chunks.push(chunk);
+      });
+
+      let errOutput = "";
+      ffmpeg.stderr.on("data", (chunk) => {
+        errOutput += chunk.toString();
+      });
+
+      ffmpeg.on("error", (err) => {
+        console.error("FFmpeg decode spawn error:", err);
+        if (!res.headersSent) {
+          res.status(500).json({ error: "Gagal decode audio: " + err.message });
+        }
+      });
+
+      ffmpeg.on("close", (code) => {
+        if (code !== 0 && !res.headersSent) {
+          console.error("FFmpeg strip-cover exited with code", code, errOutput);
+          return res.status(500).json({ error: "Gagal mengekstrak audio: " + errOutput });
+        }
+
+        const fullBuffer = Buffer.concat(chunks);
+        // Fix RIFF and data chunk sizes in WAV header so browser AudioContext doesn't reject it
+        if (fullBuffer.length > 44 && fullBuffer.toString("ascii", 0, 4) === "RIFF") {
+          fullBuffer.writeUInt32LE(fullBuffer.length - 8, 4);
+          const dataIdx = fullBuffer.indexOf("data");
+          if (dataIdx !== -1 && dataIdx + 8 <= fullBuffer.length) {
+            fullBuffer.writeUInt32LE(fullBuffer.length - (dataIdx + 8), dataIdx + 4);
+          }
+        }
+
+        res.setHeader("Content-Type", "audio/wav");
+        res.setHeader("Content-Length", fullBuffer.length.toString());
+        res.send(fullBuffer);
+      });
+
+      ffmpeg.stdin.write(req.body);
+      ffmpeg.stdin.end();
     }
   );
 

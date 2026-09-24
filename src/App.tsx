@@ -35,17 +35,17 @@ const DEFAULT_SETTINGS: AudioSettings = {
   speedUp: 2.326,
   robloxPlaybackSpeed: 0.43,
   outputFormat: 'ogg', // Default: OGG Vorbis (~90% lebih ringan, lolos batas 20MB Roblox)
-  oggQuality: 7, // Standar Emas Roblox 224 kbps (Jernih kristal, bebas kompresi cempreng, ukuran hanya ~2.5 - 4MB, 100% lolos batas 20MB Roblox)
+  oggQuality: 8, // Hi-Fi Studio 256 kbps (Jernih kristal, frekuensi treble & bass utuh, 100% lolos batas 20MB Roblox)
   pitchMode: 'resample',
-  amplifyDb: 0,
+  amplifyDb: 5, // +5 dB Volume Boost (Lebih keras, bertenaga & jernih di Roblox)
   preserveQuality: true,
-  reverbType: 'none',
-  reverbMix: 0.25,
-  reverbDecay: 1.8,
-  fadeInEnabled: false,
-  fadeInDuration: 2.0,
-  fadeOutEnabled: false,
-  fadeOutDuration: 3.0,
+  reverbType: 'hall', // Concert Hall Reverb (Suara megah panggung konser luas)
+  reverbMix: 0.25, // 25% Wet Mix (Pas di telinga, tidak tenggelam)
+  reverbDecay: 2.4, // 2.4s Hall Decay
+  fadeInEnabled: true, // Fade In aktif
+  fadeInDuration: 2.0, // 2.0 detik
+  fadeOutEnabled: true, // Fade Out aktif
+  fadeOutDuration: 3.0, // 3.0 detik
   remasterProfile: 'none',
   remasterIntensity: 0.7,
   autoFitRobloxLimit: true,
