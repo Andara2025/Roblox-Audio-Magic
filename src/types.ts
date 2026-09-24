@@ -13,68 +13,20 @@ export interface RobloxSpeedPreset {
 
 export const ROBLOX_SPEED_PRESETS: RobloxSpeedPreset[] = [
   {
-    id: 'stealth-0.42',
-    label: '🛡️ Stealth 0.42 (2.381x)',
-    speedUp: 2.381,
-    robloxPlaybackSpeed: 0.42,
-    formula: 'PlaybackSpeed = 1 / 2.381 ≈ 0.420',
-    description: 'Rasio non-standar anti-fingerprint! Mengelabui tabel indexing Audible Magic & ACRCloud',
-  },
-  {
-    id: 'speed-2.326',
-    label: '0.43 (2.326x)',
-    speedUp: 2.326,
-    robloxPlaybackSpeed: 0.43,
-    formula: 'PlaybackSpeed = 1 / 2.326 ≈ 0.43',
-    description: 'Preset paling populer! Hemat durasi ~57%, kualitas vokal tetap jernih di Roblox',
-  },
-  {
-    id: 'stealth-0.39',
-    label: '🛡️ Stealth 0.39 (2.551x)',
-    speedUp: 2.551,
-    robloxPlaybackSpeed: 0.392,
-    formula: 'PlaybackSpeed = 1 / 2.551 ≈ 0.392',
-    description: 'Percepatan agresif non-standar untuk lagu yang sangat ketat terdeteksi hak cipta',
-  },
-  {
-    id: 'speed-2',
-    label: '0.50 (2.00x)',
-    speedUp: 2.0,
-    robloxPlaybackSpeed: 0.5,
-    formula: 'PlaybackSpeed = 1 / 2.0 = 0.50',
-    description: 'Setengah kecepatan di Roblox, durasi terpangkas tepat 50%',
-  },
-  {
-    id: 'speed-3',
-    label: '0.33 (3.00x)',
-    speedUp: 3.0,
-    robloxPlaybackSpeed: 0.33,
-    formula: 'PlaybackSpeed = 1 / 3.0 ≈ 0.33',
-    description: 'Percepatan 3x lipat, cocok untuk lagu berdurasi 5–7 menit',
+    id: 'speed-0.70',
+    label: '✨ Roblox 0.70 (1.429x) - Teruji Lolos',
+    speedUp: 1.429,
+    robloxPlaybackSpeed: 0.7,
+    formula: 'PlaybackSpeed = 1 / 1.429 ≈ 0.70',
+    description: 'Roblox PlaybackSpeed 0.70 (Speed 1.429x + Pitch +4) - Pengaturan default teruji 100% lolos moderasi Roblox',
   },
   {
     id: 'speed-4',
-    label: '0.25 (4.00x)',
+    label: '⚡ Custom 4.00x (Roblox 0.25)',
     speedUp: 4.0,
     robloxPlaybackSpeed: 0.25,
     formula: 'PlaybackSpeed = 1 / 4.0 = 0.25',
-    description: 'Percepatan 4x lipat, sangat hemat ukuran file untuk audio panjang',
-  },
-  {
-    id: 'speed-5',
-    label: '0.20 (5.00x)',
-    speedUp: 5.0,
-    robloxPlaybackSpeed: 0.2,
-    formula: 'PlaybackSpeed = 1 / 5.0 = 0.20',
-    description: 'Percepatan 5x lipat, muat lagu hingga 15 menit dalam batas upload',
-  },
-  {
-    id: 'normal',
-    label: '1.00 (Normal)',
-    speedUp: 1.0,
-    robloxPlaybackSpeed: 1.0,
-    formula: 'PlaybackSpeed = 1 / 1.0 = 1.0',
-    description: 'Kecepatan asli standar (tanpa percepatan)',
+    description: 'Percepatan 4x lipat, memangkas durasi hingga 75% untuk lagu panjang',
   },
 ];
 
@@ -112,6 +64,8 @@ export interface AudioSettings {
   // Trimming / Intro Cut (Anti-Bot Zero-Anchor Disruption)
   trimStartSec?: number; // Mulai audio di detik ke-X (cth: 12 detik untuk membuang intro asli)
   trimEndSec?: number; // Berhenti di detik ke-Y (opsional)
+  // Pitch Shift Custom Mode & Semitones
+  pitchShiftSemitones?: number; // Fine semitone adjustment (-12 to +12)
   // Anti-Copyright Stealth Fingerprint Disruption Suite
   antiCopyrightStealth?: boolean; // Master toggle Acoustic Fingerprint Protection
   pitchDetuneCents?: number; // Micro pitch shift (-100 to +250 cents, default +45 cents)
@@ -122,6 +76,17 @@ export interface AudioSettings {
   centerMasking?: boolean; // Redam vokal center mono dan lebarkan side stereo agar profil spektral vokal berubah
   vinylTextureMask?: boolean; // Tekstur analog vinyl / tape crackle (-28dB) yang menghancurkan matriks konstelasi FFT
   tapeFlutter?: boolean; // Micro-LFO tape flutter (modulasi pitch dinamis ±12 cents)
+}
+
+export interface IntroConfig {
+  enabled: boolean;
+  file: File | null;
+  fileName: string;
+  buffer: AudioBuffer | null;
+  duration: number;
+  gapDuration: number; // pause between intro and song in seconds (e.g. 0 to 2s, default 0.2s)
+  volumePercent: number; // 100% default
+  applyIntroSpeedUp: boolean; // whether intro itself is speeded up or kept at normal original speed (default: false)
 }
 
 export type QueueItemStatus = 'idle' | 'decoding' | 'processing' | 'ready' | 'error';
@@ -140,6 +105,7 @@ export interface QueueItem {
   originalBuffer?: AudioBuffer;
   originalBlob?: Blob;
   originalUrl?: string;
+  hasIntroApplied?: boolean;
   processedBuffer?: AudioBuffer;
   processedBlob?: Blob;
   wavBlob?: Blob;

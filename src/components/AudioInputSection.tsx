@@ -7,17 +7,24 @@ import {
   Sparkles,
   Layers,
   FolderOpen,
+  Radio,
+  CheckCircle2,
 } from 'lucide-react';
+import { IntroConfig } from '../types';
 
 interface AudioInputSectionProps {
   onFilesSelected: (files: File[]) => void;
   onOpenSplitModal: (options: { localFile?: File | null }) => void;
+  onOpenIntroModal: () => void;
+  introConfig: IntroConfig;
   queueCount: number;
 }
 
 export const AudioInputSection: React.FC<AudioInputSectionProps> = ({
   onFilesSelected,
   onOpenSplitModal,
+  onOpenIntroModal,
+  introConfig,
   queueCount,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
@@ -95,6 +102,29 @@ export const AudioInputSection: React.FC<AudioInputSectionProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+          {/* Intro Audio Trigger Button */}
+          <button
+            type="button"
+            onClick={onOpenIntroModal}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-2 active:scale-95 shadow-sm ${
+              introConfig.enabled && introConfig.buffer
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-500/30 ring-1 ring-emerald-500/30'
+                : 'bg-zinc-800/90 hover:bg-zinc-700 text-zinc-300 border-zinc-700 hover:text-white'
+            }`}
+            title="Unggah audio intro pendek untuk otomatis disematkan di awal semua audio dalam antrean"
+          >
+            <Radio className={`w-3.5 h-3.5 ${introConfig.enabled && introConfig.buffer ? 'text-emerald-400' : 'text-zinc-400'}`} />
+            <span>
+              {introConfig.enabled && introConfig.buffer ? (
+                <span className="flex items-center gap-1">
+                  Intro Aktif ({introConfig.duration.toFixed(1)}s)
+                </span>
+              ) : (
+                '🎙️ Pasang Audio Intro'
+              )}
+            </span>
+          </button>
+
           <div className="px-3 py-1.5 rounded-xl bg-zinc-800/80 border border-zinc-700/60 text-xs text-zinc-300 flex items-center gap-2">
             <Layers className="w-3.5 h-3.5 text-zinc-400" />
             <span>
@@ -169,6 +199,25 @@ export const AudioInputSection: React.FC<AudioInputSectionProps> = ({
             >
               <FolderOpen className="w-4 h-4" />
               <span>Pilih File Dari Komputer</span>
+            </button>
+
+            <button
+              type="button"
+              id="open-intro-modal-btn"
+              onClick={onOpenIntroModal}
+              className={`px-4 py-2.5 rounded-xl text-xs font-semibold border transition flex items-center justify-center gap-2 active:scale-95 shadow-sm ${
+                introConfig.enabled && introConfig.buffer
+                  ? 'bg-emerald-600/25 border-emerald-500/60 text-emerald-300 ring-1 ring-emerald-500/40'
+                  : 'bg-zinc-800/90 hover:bg-zinc-750 text-zinc-200 border-emerald-500/30 hover:border-emerald-500/60'
+              }`}
+              title="Unggah audio intro pendek untuk otomatis disematkan di awal semua audio dalam antrean"
+            >
+              <Radio className={`w-4 h-4 ${introConfig.enabled && introConfig.buffer ? 'text-emerald-400 animate-pulse' : 'text-emerald-400'}`} />
+              <span>
+                {introConfig.enabled && introConfig.buffer
+                  ? `🎙️ Intro Terpasang (${introConfig.duration.toFixed(1)}s)`
+                  : '🎙️ Pasang Audio Intro (Prepend)'}
+              </span>
             </button>
 
             <button

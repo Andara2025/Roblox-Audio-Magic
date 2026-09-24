@@ -1,4 +1,4 @@
-import { AudioSettings, FolderConfig, NamingStyle, OutputAudioFormat, ReverbType } from '../types';
+import { AudioSettings, FolderConfig, IntroConfig, NamingStyle, OutputAudioFormat, ReverbType } from '../types';
 import { createOggEncoder } from 'wasm-media-encoders';
 
 let sharedAudioCtx: AudioContext | null = null;
@@ -209,11 +209,104 @@ function timeStretchBuffer(sourceBuffer: AudioBuffer, rate: number): AudioBuffer
 }
 
 /**
+ * Concatenate two AudioBuffers seamlessly with optional gap duration in seconds
+ */
+export function concatenateAudioBuffers(
+  audioCtx: AudioContext | OfflineAudioContext,
+  bufferA: AudioBuffer,
+  bufferB: AudioBuffer,
+  gapSeconds: number = 0
+): AudioBuffer {
+  const sampleRate = bufferA.sampleRate;
+  const numberOfChannels = Math.max(bufferA.numberOfChannels, bufferB.numberOfChannels);
+  const gapSamples = Math.max(0, Math.floor(gapSeconds * sampleRate));
+
+  let resampledBufferB = bufferB;
+  if (bufferB.sampleRate !== sampleRate) {
+    const length = Math.round(bufferB.duration * sampleRate);
+    const targetBuffer = new AudioBuffer({
+      numberOfChannels: bufferB.numberOfChannels,
+      length,
+      sampleRate,
+    });
+    const ratio = bufferB.sampleRate / sampleRate;
+    for (let ch = 0; ch < bufferB.numberOfChannels; ch++) {
+      const inData = bufferB.getChannelData(ch);
+      const outData = targetBuffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        const srcPos = i * ratio;
+        const idx = Math.floor(srcPos);
+        const frac = srcPos - idx;
+        const s1 = inData[idx] || 0;
+        const s2 = inData[idx + 1] || s1;
+        outData[i] = s1 + frac * (s2 - s1);
+      }
+    }
+    resampledBufferB = targetBuffer;
+  }
+
+  const totalLength = bufferA.length + gapSamples + resampledBufferB.length;
+  const combinedBuffer = new AudioBuffer({
+    numberOfChannels,
+    length: totalLength,
+    sampleRate,
+  });
+
+  for (let ch = 0; ch < numberOfChannels; ch++) {
+    const outData = combinedBuffer.getChannelData(ch);
+    const aData = bufferA.getChannelData(Math.min(ch, bufferA.numberOfChannels - 1));
+    outData.set(aData, 0);
+
+    const bData = resampledBufferB.getChannelData(Math.min(ch, resampledBufferB.numberOfChannels - 1));
+    outData.set(bData, bufferA.length + gapSamples);
+  }
+
+  return combinedBuffer;
+}
+
+/**
+ * Prepare intro buffer with volume scaling & sampleRate match
+ */
+export function prepareIntroBuffer(
+  introConfig: IntroConfig,
+  targetSampleRate: number = 44100
+): AudioBuffer | null {
+  if (!introConfig.enabled || !introConfig.buffer) return null;
+  const rawBuffer = introConfig.buffer;
+  const vol = Math.max(0, (introConfig.volumePercent ?? 100) / 100);
+
+  const duration = rawBuffer.duration;
+  const length = Math.round(duration * targetSampleRate);
+  const introProcessed = new AudioBuffer({
+    numberOfChannels: rawBuffer.numberOfChannels,
+    length,
+    sampleRate: targetSampleRate,
+  });
+
+  const ratio = rawBuffer.sampleRate / targetSampleRate;
+  for (let ch = 0; ch < rawBuffer.numberOfChannels; ch++) {
+    const srcData = rawBuffer.getChannelData(ch);
+    const dstData = introProcessed.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      const srcPos = i * ratio;
+      const idx = Math.floor(srcPos);
+      const frac = srcPos - idx;
+      const s1 = srcData[idx] || 0;
+      const s2 = srcData[idx + 1] || s1;
+      dstData[i] = (s1 + frac * (s2 - s1)) * vol;
+    }
+  }
+
+  return introProcessed;
+}
+
+/**
  * Process Audio Buffer using Web Audio API OfflineAudioContext
  */
 export async function processAudio(
   inputBuffer: AudioBuffer,
   settings: AudioSettings,
+  introConfig?: IntroConfig | null,
   onProgress?: (percent: number) => void
 ): Promise<{
   processedBuffer: AudioBuffer;
@@ -256,12 +349,14 @@ export async function processAudio(
   if (!isResample && speedUp !== 1.0) {
     // Pitch-preserved time stretch
     onProgress?.(25);
-    workBuffer = timeStretchBuffer(inputBuffer, speedUp);
+    workBuffer = timeStretchBuffer(workBuffer, speedUp);
   }
 
-  // Calculate micro-detune if anti-copyright stealth is enabled
-  const detuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
-  const detuneFactor = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+  // Calculate micro-detune if anti-copyright stealth is enabled or pitchShiftSemitones is set
+  const stealthDetuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
+  const semitoneDetuneCents = (settings.pitchShiftSemitones ?? 0) * 100;
+  const totalDetuneCents = stealthDetuneCents + semitoneDetuneCents;
+  const detuneFactor = totalDetuneCents !== 0 ? Math.pow(2, totalDetuneCents / 1200) : 1.0;
   const speedUpFactor = isResample ? speedUp * detuneFactor : 1.0;
 
   // Calculate output duration with optional pre-roll decoy lead-in silence
@@ -338,7 +433,7 @@ export async function processAudio(
   // Start after optional lead-in delay to desynchronize scanner t0 timestamp
   source.start(leadInSec);
 
-  const renderedBuffer = await offlineCtx.startRendering();
+  let renderedBuffer = await offlineCtx.startRendering();
   onProgress?.(70);
 
   const numChannels = renderedBuffer.numberOfChannels;
@@ -474,6 +569,23 @@ export async function processAudio(
           channelData[startSample + i] *= factor;
         }
       }
+    }
+  }
+
+  // Prepend Intro if enabled
+  if (introConfig && introConfig.enabled && introConfig.buffer) {
+    try {
+      const introBuf = prepareIntroBuffer(introConfig, renderedBuffer.sampleRate);
+      if (introBuf) {
+        renderedBuffer = concatenateAudioBuffers(
+          offlineCtx,
+          introBuf,
+          renderedBuffer,
+          introConfig.gapDuration ?? 0.2
+        );
+      }
+    } catch (introErr) {
+      console.warn('Failed to prepend intro buffer:', introErr);
     }
   }
 

@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import {
   AudioSettings,
   FolderConfig,
+  IntroConfig,
   QueueItem,
   RobloxSpeedPreset,
 } from './types';
@@ -14,6 +15,7 @@ import {
 } from './utils/audioEngine';
 import { RobloxFormulaCard } from './components/RobloxFormulaCard';
 import { AudioInputSection } from './components/AudioInputSection';
+import { IntroAudioModal } from './components/IntroAudioModal';
 import { GlobalControls } from './components/GlobalControls';
 import { FolderAndNamingSettings } from './components/FolderAndNamingSettings';
 import { QueueList } from './components/QueueList';
@@ -32,16 +34,17 @@ import {
 } from 'lucide-react';
 
 const DEFAULT_SETTINGS: AudioSettings = {
-  speedUp: 2.326,
-  robloxPlaybackSpeed: 0.43,
+  speedUp: 1.429,
+  robloxPlaybackSpeed: 0.7,
+  pitchShiftSemitones: 4,
   outputFormat: 'ogg', // Default: OGG Vorbis (~90% lebih ringan, lolos batas 20MB Roblox)
   oggQuality: 8, // Hi-Fi Studio 256 kbps (Jernih kristal, frekuensi treble & bass utuh, 100% lolos batas 20MB Roblox)
   pitchMode: 'resample',
-  amplifyDb: 5, // +5 dB Volume Boost (Lebih keras, bertenaga & jernih di Roblox)
+  amplifyDb: 4, // +4 dB Volume Boost (Lebih keras, bertenaga & jernih di Roblox)
   preserveQuality: true,
-  reverbType: 'hall', // Concert Hall Reverb (Suara megah panggung konser luas)
-  reverbMix: 0.25, // 25% Wet Mix (Pas di telinga, tidak tenggelam)
-  reverbDecay: 2.4, // 2.4s Hall Decay
+  reverbType: 'none',
+  reverbMix: 0.2,
+  reverbDecay: 2.0,
   fadeInEnabled: true, // Fade In aktif
   fadeInDuration: 2.0, // 2.0 detik
   fadeOutEnabled: true, // Fade Out aktif
@@ -77,6 +80,19 @@ export default function App() {
   // Timestamp Splitting Modal State
   const [splitModalOpen, setSplitModalOpen] = useState(false);
   const [splitLocalFile, setSplitLocalFile] = useState<File | null>(null);
+
+  // Intro Audio Modal State & Configuration
+  const [introModalOpen, setIntroModalOpen] = useState(false);
+  const [introConfig, setIntroConfig] = useState<IntroConfig>({
+    enabled: false,
+    file: null,
+    fileName: '',
+    buffer: null,
+    duration: 0,
+    gapDuration: 0.2,
+    volumePercent: 100,
+    applyIntroSpeedUp: false,
+  });
 
   // Audio Player State
   const [activePlayingId, setActivePlayingId] = useState<string | null>(null);
@@ -333,6 +349,7 @@ export default function App() {
       const { processedBuffer, wavBlob, oggBlob, mainBlob } = await processAudio(
         buffer,
         item.settings,
+        introConfig.enabled && introConfig.buffer ? introConfig : null,
         (percent) => {
           setQueue((prev) =>
             prev.map((q) => (q.id === id ? { ...q, progress: percent } : q))
@@ -350,6 +367,7 @@ export default function App() {
                 status: 'ready',
                 progress: 100,
                 needsReProcess: false,
+                hasIntroApplied: introConfig.enabled && !!introConfig.buffer,
                 processedBuffer,
                 processedBlob: mainBlob,
                 wavBlob,
@@ -785,6 +803,8 @@ Dibuat dengan BindStudio Audio Editor.
         <AudioInputSection
           onFilesSelected={handleFilesSelected}
           onOpenSplitModal={handleOpenSplitModal}
+          onOpenIntroModal={() => setIntroModalOpen(true)}
+          introConfig={introConfig}
           queueCount={queue.length}
         />
 
@@ -803,6 +823,8 @@ Dibuat dengan BindStudio Audio Editor.
           <LivePreviewPlayer
             queue={queue}
             settings={settings}
+            introConfig={introConfig}
+            onChangeSettings={handleUpdateMasterSettings}
           />
         )}
 
@@ -856,6 +878,22 @@ Dibuat dengan BindStudio Audio Editor.
         }}
         localFile={splitLocalFile}
         onTracksSplitted={handleTracksSplitted}
+      />
+
+      {/* Intro Audio Upload & Configuration Modal */}
+      <IntroAudioModal
+        isOpen={introModalOpen}
+        onClose={() => setIntroModalOpen(false)}
+        introConfig={introConfig}
+        onUpdateIntroConfig={(newConfig) => {
+          setIntroConfig(newConfig);
+          if (newConfig.enabled && newConfig.buffer) {
+            showNotification(
+              `Audio intro aktif: "${newConfig.fileName}" akan disematkan di awal semua audio!`,
+              'success'
+            );
+          }
+        }}
       />
     </div>
   );

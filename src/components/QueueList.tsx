@@ -261,6 +261,14 @@ export const QueueList: React.FC<QueueListProps> = ({
                         </span>
                       </button>
 
+                      {/* Intro Applied Badge */}
+                      {item.hasIntroApplied && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          <span>+Intro Prepend</span>
+                        </span>
+                      )}
+
                       {/* Potong Intro Button / Status */}
                       {onUpdateItemSettings && (
                         <button

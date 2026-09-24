@@ -1,8 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { QueueItem, AudioSettings } from '../types';
+import { QueueItem, AudioSettings, IntroConfig } from '../types';
 import {
   getAudioContext,
   createReverbImpulse,
+  concatenateAudioBuffers,
+  prepareIntroBuffer,
 } from '../utils/audioEngine';
 import {
   Play,
@@ -11,25 +13,34 @@ import {
   Sparkles,
   Disc3,
   Radio,
+  Sliders,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface LivePreviewPlayerProps {
   queue: QueueItem[];
   settings: AudioSettings;
+  introConfig?: IntroConfig;
   onChangeSettings?: (newSettings: AudioSettings) => void;
 }
 
 export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
   queue,
   settings,
+  introConfig,
+  onChangeSettings,
 }) => {
   const [selectedItemId, setSelectedItemId] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   // Default: Normal speed (1.0x). User can switch to speedup mode anytime.
   const [previewSpeedMode, setPreviewSpeedMode] = useState<'normal' | 'speedup'>('normal');
   const [reverbBypass, setReverbBypass] = useState<boolean>(false); // A/B test without reverb
+  const [previewIncludeIntro, setPreviewIncludeIntro] = useState<boolean>(true); // Option to hear with or without intro
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
+
+  // Cached composite buffer when intro is active
+  const compositeBufferRef = useRef<AudioBuffer | null>(null);
 
   // Web Audio Graph References for real-time live manipulation
   const sourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
@@ -92,22 +103,55 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     isStoppingIntentionallyRef.current = false;
   };
 
-  // Stop when selected item changes
-  useEffect(() => {
-    stopAudio(false);
-    if (activeItem?.originalBuffer) {
-      setDuration(activeItem.originalBuffer.duration);
+  // Compute effective playback buffer (combining intro if enabled and requested)
+  const getActivePlaybackBuffer = (): AudioBuffer | null => {
+    if (!activeItem?.originalBuffer) return null;
+    const baseBuffer = activeItem.originalBuffer;
+
+    if (previewIncludeIntro && introConfig && introConfig.enabled && introConfig.buffer) {
+      if (compositeBufferRef.current) {
+        return compositeBufferRef.current;
+      }
+      try {
+        const ctx = getAudioContext();
+        const introBuf = prepareIntroBuffer(introConfig, baseBuffer.sampleRate);
+        if (introBuf) {
+          const combined = concatenateAudioBuffers(
+            ctx,
+            introBuf,
+            baseBuffer,
+            introConfig.gapDuration ?? 0.2
+          );
+          compositeBufferRef.current = combined;
+          return combined;
+        }
+      } catch (err) {
+        console.warn('Live preview failed to concatenate intro:', err);
+      }
     }
-  }, [selectedItemId]);
+    return baseBuffer;
+  };
+
+  // Stop when selected item, introConfig, or previewIncludeIntro changes
+  useEffect(() => {
+    compositeBufferRef.current = null;
+    stopAudio(false);
+    const buf = getActivePlaybackBuffer();
+    if (buf) {
+      setDuration(buf.duration);
+    }
+  }, [selectedItemId, introConfig?.buffer, introConfig?.enabled, introConfig?.volumePercent, introConfig?.gapDuration, previewIncludeIntro]);
 
   // Real-time parameter updates without stopping playback
   useEffect(() => {
     const ctx = getAudioContext();
     const now = ctx.currentTime;
-    const detuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
-    const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+    const stealthDetuneCents = settings.antiCopyrightStealth ? (settings.pitchDetuneCents ?? 45) : 0;
+    const semitoneDetuneCents = (settings.pitchShiftSemitones ?? 0) * 100;
+    const totalDetuneCents = stealthDetuneCents + semitoneDetuneCents;
+    const detuneRatio = totalDetuneCents !== 0 ? Math.pow(2, totalDetuneCents / 1200) : 1.0;
     const currentRate = previewSpeedMode === 'normal'
-      ? 1.0
+      ? (totalDetuneCents !== 0 ? detuneRatio : 1.0)
       : settings.speedUp * (settings.pitchMode === 'resample' ? detuneRatio : 1.0);
 
     // 1. Update Speed / PlaybackRate
@@ -135,6 +179,10 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     }
   }, [
     settings.speedUp,
+    settings.pitchShiftSemitones,
+    settings.pitchMode,
+    settings.antiCopyrightStealth,
+    settings.pitchDetuneCents,
     settings.amplifyDb,
     settings.reverbType,
     settings.reverbMix,
@@ -144,7 +192,8 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
 
   // Start live playing from a specific offset
   const playLiveAudio = (offsetSeconds: number = 0, explicitSpeedMode?: 'normal' | 'speedup') => {
-    if (!activeItem?.originalBuffer) return;
+    const buffer = getActivePlaybackBuffer();
+    if (!buffer) return;
     const ctx = getAudioContext();
     if (ctx.state === 'suspended') {
       ctx.resume();
@@ -153,15 +202,16 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
     // Stop current without resetting paused time
     stopAudio(true);
 
-    const buffer = activeItem.originalBuffer;
     const source = ctx.createBufferSource();
     source.buffer = buffer;
 
     const currentMode = explicitSpeedMode ?? previewSpeedModeRef.current;
-    const detuneCents = settingsRef.current.antiCopyrightStealth ? (settingsRef.current.pitchDetuneCents ?? 45) : 0;
-    const detuneRatio = detuneCents !== 0 ? Math.pow(2, detuneCents / 1200) : 1.0;
+    const stealthDetuneCents = settingsRef.current.antiCopyrightStealth ? (settingsRef.current.pitchDetuneCents ?? 45) : 0;
+    const semitoneDetuneCents = (settingsRef.current.pitchShiftSemitones ?? 0) * 100;
+    const totalDetuneCents = stealthDetuneCents + semitoneDetuneCents;
+    const detuneRatio = totalDetuneCents !== 0 ? Math.pow(2, totalDetuneCents / 1200) : 1.0;
     const currentRate = currentMode === 'normal'
-      ? 1.0
+      ? (totalDetuneCents !== 0 ? detuneRatio : 1.0)
       : settingsRef.current.speedUp * (settingsRef.current.pitchMode === 'resample' ? detuneRatio : 1.0);
     source.playbackRate.value = currentRate;
 
@@ -351,7 +401,7 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
       </div>
 
       {/* Real-time DSP Active Inspector & Controls */}
-      <div className="mt-3.5 grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="mt-3.5 grid grid-cols-1 md:grid-cols-3 gap-3">
         {/* 1. Track Selection & Gain Monitor */}
         <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs mb-1.5">
@@ -374,15 +424,93 @@ export const LivePreviewPlayer: React.FC<LivePreviewPlayerProps> = ({
               </span>
             )}
           </div>
-          <div className="flex items-center justify-between text-xs pt-1.5 border-t border-zinc-800/80">
-            <span className="text-zinc-400">Volume Gain:</span>
-            <span className="font-mono font-bold text-emerald-400">
-              {settings.amplifyDb > 0 ? `+${settings.amplifyDb} dB` : `${settings.amplifyDb} dB`}
-            </span>
+          <div className="flex flex-col gap-1.5 pt-1.5 border-t border-zinc-800/80">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-400">Volume Gain:</span>
+              <span className="font-mono font-bold text-emerald-400">
+                {settings.amplifyDb > 0 ? `+${settings.amplifyDb}dB` : `${settings.amplifyDb}dB`}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-zinc-400 flex items-center gap-1">
+                <Sliders className="w-3 h-3 text-indigo-400" />
+                <span>Pitch (Nada):</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                {onChangeSettings && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChangeSettings({
+                        ...settings,
+                        pitchShiftSemitones: Math.max(-12, (settings.pitchShiftSemitones ?? 0) - 1),
+                      })
+                    }
+                    className="w-5 h-5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center text-[10px] font-bold active:scale-95"
+                    title="Turunkan 1 semitone"
+                  >
+                    -
+                  </button>
+                )}
+                <span className="font-mono font-bold text-indigo-300 text-xs min-w-[36px] text-center">
+                  {(settings.pitchShiftSemitones ?? 0) > 0
+                    ? `+${settings.pitchShiftSemitones}`
+                    : settings.pitchShiftSemitones ?? 0} st
+                </span>
+                {onChangeSettings && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onChangeSettings({
+                        ...settings,
+                        pitchShiftSemitones: Math.min(12, (settings.pitchShiftSemitones ?? 0) + 1),
+                      })
+                    }
+                    className="w-5 h-5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 flex items-center justify-center text-[10px] font-bold active:scale-95"
+                    title="Naikkan 1 semitone"
+                  >
+                    +
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
-        {/* 2. Reverb Ambient & A/B Bypass (Zero volume drop guarantee) */}
+        {/* 2. Intro Prepend Audition Status & Toggle */}
+        <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-xs mb-1.5">
+            <span className="text-zinc-400 font-medium flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Intro Prepend:</span>
+            </span>
+            <span className={`font-bold text-xs ${introConfig?.enabled && introConfig?.buffer ? 'text-emerald-400' : 'text-zinc-500'}`}>
+              {introConfig?.enabled && introConfig?.buffer ? `${introConfig.duration.toFixed(1)}s Aktif` : 'Tidak Aktif'}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-xs pt-1.5 border-t border-zinc-800/80">
+            <span className="text-zinc-500 text-[11px]">Sertakan di Audisi:</span>
+            <button
+              type="button"
+              disabled={!introConfig?.enabled || !introConfig?.buffer}
+              onClick={() => setPreviewIncludeIntro((prev) => !prev)}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold border transition ${
+                !introConfig?.enabled || !introConfig?.buffer
+                  ? 'bg-zinc-850 text-zinc-600 border-zinc-800 cursor-not-allowed'
+                  : previewIncludeIntro
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                  : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+              }`}
+              title={introConfig?.buffer ? 'Dengarkan preview lagu lengkap dengan intro di depannya' : 'Upload intro terlebih dahulu'}
+            >
+              {introConfig?.enabled && introConfig?.buffer
+                ? previewIncludeIntro ? 'Intro: TERPASANG' : 'Intro: DILEWATI'
+                : 'Tanpa Intro'}
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Reverb Ambient & A/B Bypass (Zero volume drop guarantee) */}
         <div className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs mb-1.5">
             <span className="text-zinc-400 font-medium flex items-center gap-1.5">

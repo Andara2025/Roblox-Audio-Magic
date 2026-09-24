@@ -169,181 +169,85 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
       {/* 1-Click Quick Preset Selector Bar */}
       <div className="mb-5 p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/90 flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-inner">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="text-xs font-bold text-zinc-200 tracking-wide">Preset Siap Pakai Roblox:</span>
+          <Sparkles className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span className="text-xs font-bold text-zinc-200 tracking-wide">Pilihan Preset Kecepatan:</span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() =>
-              onChangeSettings({
-                ...settings,
-                antiCopyrightStealth: true,
-                pitchDetuneCents: 120,
-                haasStereoWide: true,
-                harmonicWarmth: true,
-                spectralDither: true,
-                leadInSilenceSec: 2.0,
-                centerMasking: true,
-                speedUp: 3.125,
-                robloxPlaybackSpeed: 0.32,
-                amplifyDb: 5,
-                fadeInEnabled: true,
-                fadeInDuration: 2.0,
-                fadeOutEnabled: true,
-                fadeOutDuration: 3.0,
-                outputFormat: 'ogg',
-                oggQuality: 8,
-                reverbType: 'hall',
-                reverbMix: 0.35,
-                reverbDecay: 3.2,
-                preserveQuality: true,
-                autoFitRobloxLimit: true,
-              })
-            }
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
-              settings.antiCopyrightStealth && (settings.pitchDetuneCents ?? 0) >= 100
-                ? 'bg-gradient-to-r from-rose-600 via-purple-600 to-amber-600 text-white shadow-md shadow-rose-600/30 ring-1 ring-rose-300'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-rose-300 border border-rose-800/60'
-            }`}
-            title="Setting paling ampuh untuk lagu yang berulang kali gagal: Speed 3.125x (PBS 0.320), Detune +120c (+1.2 Semitone), Reverb Hall 35%, Decoy Lead-in 2s, Vokal Center Masking"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 text-rose-300" />
-            <span>👑 Bypass Ekstrem (Lagu Sulit / Populer)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              onChangeSettings({
-                ...settings,
-                antiCopyrightStealth: true,
-                pitchDetuneCents: 45,
-                haasStereoWide: true,
-                harmonicWarmth: true,
-                spectralDither: true,
-                leadInSilenceSec: 0,
-                centerMasking: true,
-                speedUp: 2.381,
-                robloxPlaybackSpeed: 0.42,
-                amplifyDb: 5,
-                fadeInEnabled: true,
-                fadeInDuration: 2.0,
-                fadeOutEnabled: true,
-                fadeOutDuration: 3.0,
-                outputFormat: 'ogg',
-                oggQuality: 8,
-                reverbType: 'hall',
-                reverbMix: 0.25,
-                reverbDecay: 2.4,
-                preserveQuality: true,
-                autoFitRobloxLimit: true,
-              })
-            }
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
-              settings.antiCopyrightStealth && (settings.pitchDetuneCents ?? 0) < 100
-                ? 'bg-gradient-to-r from-purple-600 via-indigo-600 to-violet-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-300'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-purple-300 border border-purple-800/60'
-            }`}
-            title="Acoustic Fingerprint Protection: Kecepatan non-standar 2.381x (PBS 0.420), Micro-Detune +45c, Haas 3D Stereo Phase, Tape Saturation, OGG 256k"
-          >
-            <ShieldAlert className="w-3.5 h-3.5 text-purple-200" />
-            <span>🛡️ Acoustic Protection Pro (PBS 0.420)</span>
-          </button>
-
+          {/* Default 0.70x Roblox (1.429x Speed + Pitch +4) */}
           <button
             type="button"
             onClick={() =>
               onChangeSettings({
                 ...settings,
                 antiCopyrightStealth: false,
-                speedUp: 2.326,
-                robloxPlaybackSpeed: 0.43,
-                amplifyDb: 5,
+                speedUp: 1.429,
+                robloxPlaybackSpeed: 0.7,
+                pitchShiftSemitones: 4,
+                amplifyDb: 4,
                 fadeInEnabled: true,
                 fadeInDuration: 2.0,
                 fadeOutEnabled: true,
                 fadeOutDuration: 3.0,
                 outputFormat: 'ogg',
                 oggQuality: 8,
-                reverbType: 'hall',
-                reverbMix: 0.25,
-                reverbDecay: 2.4,
+                reverbType: 'none',
                 preserveQuality: true,
                 autoFitRobloxLimit: true,
               })
             }
             className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
-              !settings.antiCopyrightStealth &&
-              settings.amplifyDb === 5 &&
-              settings.reverbType === 'hall' &&
-              settings.fadeInEnabled &&
-              settings.fadeOutEnabled &&
-              (settings.oggQuality ?? 8) === 8 &&
-              settings.speedUp === 2.326
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-zinc-950 shadow-md shadow-amber-500/20 ring-1 ring-amber-300'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700'
+              settings.robloxPlaybackSpeed === 0.7 && settings.speedUp === 1.429
+                ? 'bg-cyan-500 text-zinc-950 font-extrabold shadow-md shadow-cyan-500/25 ring-2 ring-cyan-300'
+                : 'bg-zinc-900 text-cyan-300 hover:text-cyan-100 border border-cyan-800/60'
             }`}
-            title="Preset rekomendasi: +5dB Volume, Fade In 2s & Out 3s, OGG 256k, Concert Hall Reverb, Speed 2.326x"
+            title="Preset Utama Teruji Lolos: Roblox PlaybackSpeed 0.70 (Speed 1.429x + Pitch +4)"
           >
-            <span>🔥 Roblox Concert Pro (+5dB • Fade • Concert Hall • 256k)</span>
+            <Check className="w-3.5 h-3.5" />
+            <span>✨ Default 0.70 (1.429x + Pitch +4) [Lolos Moderasi]</span>
           </button>
 
+          {/* Custom 4.0x */}
           <button
             type="button"
             onClick={() =>
               onChangeSettings({
                 ...settings,
-                speedUp: 2.326,
-                robloxPlaybackSpeed: 0.43,
-                amplifyDb: 5,
-                fadeInEnabled: true,
-                fadeInDuration: 2.0,
-                fadeOutEnabled: true,
-                fadeOutDuration: 3.0,
-                outputFormat: 'ogg',
-                oggQuality: 8,
-                reverbType: 'none',
+                speedUp: 4.0,
+                robloxPlaybackSpeed: 0.25,
                 preserveQuality: true,
                 autoFitRobloxLimit: true,
               })
             }
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
-              settings.reverbType === 'none' && settings.amplifyDb === 5 && settings.speedUp === 2.326
-                ? 'bg-zinc-700 text-white font-semibold'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition active:scale-95 ${
+              settings.speedUp === 4.0
+                ? 'bg-amber-500 text-zinc-950 font-extrabold shadow-md shadow-amber-500/25 ring-2 ring-amber-300'
+                : 'bg-zinc-900 text-amber-300 hover:text-amber-100 border border-amber-800/60'
             }`}
-            title="Preset kering tanpa reverb: +5dB Volume, Fade In/Out, OGG 256k, Speed 2.326x"
+            title="Preset Kustom 4.0x: Percepatan 4x lipat (Roblox PlaybackSpeed 0.25), memangkas durasi 75%"
           >
-            <span>Roblox Clean (+5dB • Dry)</span>
+            <Zap className="w-3.5 h-3.5" />
+            <span>⚡ Custom 4.0x (Roblox 0.25)</span>
           </button>
 
-          <button
-            type="button"
-            onClick={() =>
-              onChangeSettings({
-                ...settings,
-                speedUp: 1.0,
-                robloxPlaybackSpeed: 1.0,
-                amplifyDb: 0,
-                fadeInEnabled: false,
-                fadeOutEnabled: false,
-                outputFormat: 'ogg',
-                oggQuality: 8,
-                reverbType: 'none',
-                preserveQuality: true,
-                autoFitRobloxLimit: true,
-              })
-            }
-            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition active:scale-95 ${
-              settings.speedUp === 1.0 && settings.amplifyDb === 0
-                ? 'bg-zinc-700 text-white font-semibold'
-                : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800'
-            }`}
-            title="Kembalikan ke setting standar: Speed asli 1.0x, 0dB gain, tanpa efek"
-          >
-            <span>Reset Normal (1.0x • 0dB)</span>
-          </button>
+          {/* Direct Manual Speed Input Badge / Trigger */}
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900/90 border border-zinc-800 text-xs">
+            <span className="text-[11px] text-zinc-400 font-mono">Input Manual (x):</span>
+            <input
+              type="number"
+              step="0.01"
+              min="0.1"
+              max="15"
+              value={settings.speedUp}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                if (!isNaN(val) && val > 0) {
+                  handleSpeedChange(val);
+                }
+              }}
+              className="w-16 bg-zinc-950 border border-zinc-700/80 rounded px-1.5 py-0.5 text-xs text-white font-mono font-bold text-center focus:outline-none focus:border-cyan-500"
+              title="Ketik angka speed bebas sesuai keinginan"
+            />
+          </div>
         </div>
       </div>
 
@@ -354,12 +258,28 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
           <div>
             <div className="flex items-center justify-between gap-2 mb-3">
               <span className="text-xs font-bold text-white flex items-center gap-2">
-                <Disc3 className="w-4 h-4 text-red-400" />
+                <Disc3 className="w-4 h-4 text-cyan-400" />
                 <span>Percepatan Audio (Speed-Up)</span>
               </span>
-              <span className="text-xs font-mono font-extrabold text-red-400 bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20">
-                {settings.speedUp}x
-              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] text-zinc-500 font-mono">Manual:</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.1"
+                  max="15"
+                  value={settings.speedUp}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    if (!isNaN(val) && val > 0) {
+                      handleSpeedChange(val);
+                    }
+                  }}
+                  className="w-16 bg-zinc-900 border border-cyan-500/40 rounded px-1.5 py-0.5 text-xs font-mono font-extrabold text-cyan-300 text-center focus:outline-none focus:ring-1 focus:ring-cyan-400"
+                  title="Ketik angka speed langsung di sini"
+                />
+                <span className="text-xs font-mono font-bold text-cyan-400">x</span>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -436,6 +356,44 @@ export const GlobalControls: React.FC<GlobalControlsProps> = ({
                   </>
                 )}
               </button>
+            </div>
+          </div>
+
+          {/* Explicit Pitch / Nada Setting Control */}
+          <div className="mt-2.5 p-2.5 rounded-lg bg-zinc-900/90 border border-zinc-800/90 text-xs">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-zinc-300 font-semibold text-[11px] flex items-center gap-1.5">
+                <Sliders className="w-3 h-3 text-indigo-400" />
+                <span>Pengaturan Pitch (Nada):</span>
+              </span>
+              <span className="font-mono font-bold text-[11px] text-indigo-300">
+                {(settings.pitchShiftSemitones ?? 0) > 0 ? `+${settings.pitchShiftSemitones}` : (settings.pitchShiftSemitones ?? 0)} semitone
+              </span>
+            </div>
+            <input
+              type="range"
+              min="-12"
+              max="12"
+              step="1"
+              value={settings.pitchShiftSemitones ?? 0}
+              onChange={(e) =>
+                onChangeSettings({
+                  ...settings,
+                  pitchShiftSemitones: parseInt(e.target.value, 10),
+                })
+              }
+              className="w-full h-1.5 bg-zinc-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+            />
+            <div className="flex items-center justify-between text-[10px] text-zinc-500 font-mono mt-1">
+              <span>-12 (Oktaf Bawah)</span>
+              <button
+                type="button"
+                onClick={() => onChangeSettings({ ...settings, pitchShiftSemitones: 0 })}
+                className="text-zinc-400 hover:text-white underline"
+              >
+                0 (Normal)
+              </button>
+              <span>+12 (Oktaf Atas)</span>
             </div>
           </div>
         </div>

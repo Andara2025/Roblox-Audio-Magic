@@ -85,11 +85,11 @@ export const RobloxFormulaCard: React.FC<RobloxFormulaCardProps> = ({
       {/* Interactive Speed Presets */}
       <div>
         <div className="text-xs font-semibold text-zinc-300 mb-2.5 flex items-center justify-between">
-          <span>Pilih Preset Kecepatan Roblox Populer:</span>
+          <span>Pilih Preset Kecepatan Roblox:</span>
           <span className="text-[11px] text-zinc-500">Klik untuk langsung menerapkan</span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-2.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           {ROBLOX_SPEED_PRESETS.map((preset) => {
             const isSelected = Math.abs(activeSpeedUp - preset.speedUp) < 0.01;
             return (
@@ -101,23 +101,26 @@ export const RobloxFormulaCard: React.FC<RobloxFormulaCardProps> = ({
                   onSelectPreset(preset);
                   setCustomSpeedInput(preset.speedUp.toString());
                 }}
-                className={`p-3 rounded-xl border text-left transition-all relative flex flex-col justify-between active:scale-95 ${
+                className={`p-3.5 rounded-xl border text-left transition-all relative flex flex-col justify-between active:scale-95 ${
                   isSelected
-                    ? 'bg-red-500/15 border-red-500/60 shadow-md shadow-red-500/15 ring-1 ring-red-500/40'
+                    ? 'bg-cyan-500/15 border-cyan-500/60 shadow-md shadow-cyan-500/15 ring-1 ring-cyan-500/40'
                     : 'bg-zinc-950/60 border-zinc-800 hover:border-zinc-700 hover:bg-zinc-900/60'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between gap-1 mb-1">
-                    <span className="text-[11px] font-medium text-zinc-400">Roblox:</span>
-                    <span className="text-xs font-mono font-bold text-white">{preset.robloxPlaybackSpeed}</span>
+                    <span className="text-xs font-bold text-white">{preset.label}</span>
+                    <span className="text-xs font-mono font-bold text-cyan-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800">
+                      PBS: {preset.robloxPlaybackSpeed}
+                    </span>
                   </div>
-                  <div className="text-[13px] font-mono font-extrabold text-red-400">
-                    {preset.speedUp}x
+                  <div className="text-xs text-zinc-400 mt-1">
+                    {preset.description}
                   </div>
                 </div>
-                <div className="text-[10px] text-zinc-500 truncate mt-1 pt-1 border-t border-zinc-800/80">
-                  {preset.speedUp === 1 ? 'Normal' : `Hemat ~${Math.round((1 - 1 / preset.speedUp) * 100)}%`}
+                <div className="text-[11px] font-mono text-cyan-300 mt-2 pt-2 border-t border-zinc-800/80 flex items-center justify-between">
+                  <span>Kecepatan Web: <strong>{preset.speedUp}x</strong></span>
+                  <span>Hemat Durasi: <strong>~{Math.round((1 - 1 / preset.speedUp) * 100)}%</strong></span>
                 </div>
               </button>
             );
